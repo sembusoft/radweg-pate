@@ -119,6 +119,7 @@ async function main() {
   check(/^[a-f0-9]{32}$/.test(boot.data?.gpxToken || ''), 'bootstrap liefert GPX-Schlüssel');
   let anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + boot.data.gpxToken);
   check(anon.status === 200 && (anon.headers.get('content-type') || '').includes('gpx'), 'GPX mit Schlüssel ohne Anmeldung (eigenes Browserfenster)');
+  check((anon.headers.get('content-disposition') || '').startsWith('inline'), 'GPX über Schlüssel-Link wird inline ausgeliefert');
   anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + 'f'.repeat(32));
   check(anon.status === 401, 'GPX mit falschem Schlüssel → 401');
   anon = await fetch(BASE + '/api.php?action=bootstrap&dl=' + boot.data.gpxToken);

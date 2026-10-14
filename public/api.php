@@ -737,7 +737,9 @@ if ($action==='gpx' && $method==='GET') {
         $filename='radwegpate-tour-'.$ids[0].'.gpx';
     }
     header('Content-Type: application/gpx+xml; charset=utf-8');
-    header('Content-Disposition: attachment; filename="'.$filename.'"');
+    // Über den Schlüssel-Link (eigenes Fenster der iOS-Homescreen-App) "inline": Safari zeigt dort die
+    // Dateiseite mit "In … öffnen"; ein Download ("attachment") bliebe in diesem Fenster leer.
+    header('Content-Disposition: '.($gpxByToken ? 'inline' : 'attachment').'; filename="'.$filename.'"');
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
     echo '<gpx version="1.1" creator="Radwegpate" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>'.gpx_escape($name).'</name></metadata><trk><name>'.gpx_escape($name).'</name>';
     foreach($lines as $line){
