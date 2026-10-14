@@ -355,7 +355,9 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
    Die Karte (.map-stage) scrollt mit, bis sie unter der Kopfleiste ankommt, und bleibt dort
    stehen (sticky); darunter scrollt nur noch die Tourliste. --topbar-h setzt app.js.
    Der runde Knopf (.map-fab) schiebt die Karte nach rechts hinaus und holt die Aktionen herein. */
-.heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Knöpfe über der Karte: links und rechts bündig mit der Karte */
+#map-view .section-heading > div:first-child { flex: 1 1 100%; }
+.heading-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; flex: 1 1 100%; }
 .map-stage {
   --map-h: clamp(240px, 42dvh, 420px);
   position: sticky; top: var(--topbar-h, 140px); z-index: 30;
@@ -448,9 +450,11 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
 .route-heading h3 { margin: 2px 0 4px; }
 .route-heading p { margin: 0; font-size: .9375rem; color: var(--text-muted); }
 .route-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; padding-bottom: 12px; border-bottom: var(--bw) solid var(--border); }
-.route-links { align-items: center; }
-.route-bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
-.route-bottom .btn { flex: 1 1 140px; }
+.route-edit { margin: -4px -4px 0 0; }
+/* Vier Aktionen als 2 × 2, gleich breit */
+.route-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.route-actions .btn { width: 100%; padding-left: 8px; padding-right: 8px; }
+.route-actions .map-empty { grid-column: 1 / -1; margin: 0; }
 .route-note { margin: 10px 0 0; font-size: .875rem; color: var(--text-muted); }
 .settings-route { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 52px; border-bottom: var(--bw) solid var(--border); }
 .settings-route:last-child { border-bottom: 0; }

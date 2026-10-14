@@ -62,12 +62,11 @@ function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))
 function routeCard(r){
  const entries=counts(r.id), recent=entries[0], tourIssueCount=entries.reduce((n,e)=>n+entryIssues(e).filter(i=>i.tourId===r.id).length,0),openCount=pendingIssues([r.id]).length;
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
- const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button> <a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<span class="map-empty">Noch keine KML-Linie zugeordnet</span>';
+ const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
  return `<article class="route-card">
-  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div></div>
+  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div><button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button></div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
-  <div class="route-links">${mapLinks}</div>
-  <div class="route-bottom"><button type="button" class="text-btn" data-route-edit="${r.id}">${ic('pencil')} Details</button><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button></div>
+  <div class="route-actions"><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button>${mapLinks}</div>
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
 }
