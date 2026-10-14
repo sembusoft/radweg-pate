@@ -18,7 +18,7 @@ export const ICONS = [
   // Tagebuch und Mängel
   'pencil', 'trash', 'check', 'arrow-back-up', 'camera', 'current-location', 'info-circle', 'list-check',
   // Karte: Auswahl umschalten
-  'square-check', 'square-x',
+  'square-check', 'square-x', 'chevron-down',
   // Einstellungen
   'palette', 'text-size', 'lock', 'logout', 'refresh'
 ];

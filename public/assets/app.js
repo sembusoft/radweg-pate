@@ -277,7 +277,9 @@ function setupEvents(){
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
  $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
- for(const id of ['new-entry-diary','mobile-add'])$('#'+id).addEventListener('click',()=>openEntry());
+ $('#new-entry-diary').addEventListener('click',()=>openEntry());
+ // Plus in der Tab-Leiste: auf der Karte mit den gewählten Touren vorbelegt.
+ $('#mobile-add').addEventListener('click',()=>{const ids=state.tab==='map'?selectedMapTours():[];ids.length?openEntry(ids[0],'',ids):openEntry();});
  for(const k of $$('.kpi'))k.addEventListener('click',()=>{if(k.dataset.goto==='diary'){$('#filter-tour').value='';$('#filter-status').value=k.dataset.filter||'';renderDiary();}selectTab(k.dataset.goto);});
  setupAppearance();
  $('#add-issue').addEventListener('click',()=>{if(!selectedEntryTours().length){toast('Zuerst eine Tour auswählen.',true);return;}if($$('.issue-row').length>=25){toast('Maximal 25 Mängel.',true);return;}makeIssueRow();});
@@ -459,8 +461,8 @@ function renderSelectionSummary(){
  const ids=selectedMapTours();
  const n=ids.length;
  const total=ids.reduce((sum,id)=>sum+routeLineKm(id),0);
- const label=$('#selection-count');label.textContent=n===1?'1 Tour':`${n} Touren`;
- $('#selection-summary').textContent=n?`${ids.map(id=>`${id} · ${routeById(id)?.name||''}`).join(' → ')}\n${total.toFixed(2).replace('.',',')} km nach KML`:'Noch keine Tour ausgewählt – unten in der Liste anwählen.';
+ const label=$('#selection-count');label.textContent=n?`${n===1?'1 Tour':n+' Touren'} · ${total.toFixed(1).replace('.',',')} km`:'keine';
+ $('#selection-summary').textContent=n?ids.map(id=>`${id} · ${routeById(id)?.name||''}`).join('\n'):'Noch keine Tour ausgewählt – unten in der Liste anwählen.';
  const check=n>1?comboCheck(ids):{ok:n===1,message:''};
  // Über der Karte steht nur, was die Auswahl verhindert (keine lückenlose GPX-Kombination).
  const warning=$('#selection-warning');
@@ -472,19 +474,16 @@ function renderSelectionSummary(){
  const link=$('#selection-gpx');link.hidden=!check.ok;
  if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Komoot':' Kombination als GPX für Komoot');}
  else link.removeAttribute('href');
- $('#selection-diary').disabled=n===0;
  $('#selection-start').disabled=n===0;
  $('#selection-start').innerHTML=ic('bike')+(n?` Tour starten · ${pendingIssues(ids).length} offene Mängel`:' Tour starten · Mängel prüfen');
- $('#selection-zoom').disabled=n===0;
  const nav=$('#selection-navigation');
  if(n===1){
    const id=ids[0], maps=routeMaps(id);
    if(maps){
      const target=maps.point;
-     nav.innerHTML=`<p class="smallnote"><b>Ziel: KML-Wendepunkt an der Gemeindegrenze</b> (${target[1].toFixed(6)}, ${target[0].toFixed(6)}). Google und Apple berechnen ihre eigene Route dorthin. Die Originalstrecke siehst du in unserer OpenStreetMap-basierten Karte (nicht auf der externen OSM-Webseite).</p><div class="navigation-buttons">
+     nav.innerHTML=`<p class="smallnote"><b>Ziel: KML-Wendepunkt an der Gemeindegrenze</b> (${target[1].toFixed(6)}, ${target[0].toFixed(6)}). Google und Apple berechnen ihre eigene Route dorthin. Die Originalstrecke zeigen nur unsere Karte und die GPX.</p><div class="navigation-buttons">
        <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google Maps · Ziel</a>
-       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple Karten · Ziel</a>
-       <button class="btn outline small" type="button" data-show-map-route="${esc(id)}">${ic('map')} Originalstrecke auf der Karte</button></div>`;
+       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple Karten · Ziel</a></div>`;
    } else if(routeById(id)?.type==='runde'){
      nav.innerHTML='<p class="smallnote">Rundtour: Start und Ziel sind identisch. Für die <b>vollständige Streckenführung</b> bitte GPX herunterladen und in Komoot importieren. Google/Apple/OSM können diese KML-Rundtour nicht per Link übernehmen.</p>';
    } else {
@@ -620,14 +619,14 @@ function mapEvents(){
    state.visibleRoutes=all.every(id=>state.visibleRoutes.has(id))?new Set():new Set(all);
    saveVisibleRoutes();renderMap();if(state.visibleRoutes.size)zoomMap();
  });
- $('#map-fab').addEventListener('click',()=>setMapActions(!$('#map-stage').classList.contains('show-actions')));
- $('#selection-zoom').addEventListener('click',()=>{setMapActions(false);zoomMap();});
+ // Schließen = zurück zur Karte und auf die Auswahl zoomen (ersetzt "Auswahl auf Karte zeigen").
+ $('#map-fab').addEventListener('click',()=>{const open=!$('#map-stage').classList.contains('show-actions');setMapActions(open);if(!open)zoomMap();});
+ // Auswahl-Leiste auf der Karte auf-/zuklappen; Zustand je Gerät.
+ const setOverlay=open=>{$('#overlay-toggle').setAttribute('aria-expanded',String(open));$('#overlay-body').hidden=!open;$('#map-overlay').classList.toggle('open',open);};
+ setOverlay(storedPref('radwegpate-overlay','')==='open');
+ $('#overlay-toggle').addEventListener('click',()=>{const open=$('#overlay-toggle').getAttribute('aria-expanded')!=='true';setOverlay(open);storePref('radwegpate-overlay',open?'open':'');});
  $('#selection-start').addEventListener('click',()=>startTour(selectedMapTours()));
  $('#start-diary').addEventListener('click',()=>{const ids=state.startTourIds;$('#start-dialog').close();openEntry(ids[0]||'01','',ids);});
- $('#selection-diary').addEventListener('click',()=>{
-   const ids=selectedMapTours();if(!ids.length)return;
-   openEntry(ids[0],'',ids);
- });
  $('#kml-form').addEventListener('submit',sendKmlImport);
  $('#save-assignments').addEventListener('click',saveMapAssignments);
  $('#map-zoom').addEventListener('click',()=>zoomMap());

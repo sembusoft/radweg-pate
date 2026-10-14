@@ -369,14 +369,21 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
 .actions-pane h3 { margin-bottom: 8px; }
 .map-overlay {
   position: absolute; top: 8px; left: 8px; right: 8px; z-index: 500;
-  padding: 8px 10px; border-radius: var(--radius-sm);
+  padding: 0 10px; border-radius: var(--radius-sm);
   background: var(--surface); color: var(--text); border: var(--bw) solid var(--border); box-shadow: var(--shadow);
 }
-.map-overlay .combo-summary {
-  margin: 2px 0 0; font-size: .9375rem;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+/* Kopfzeile = Knopf zum Auf-/Zuklappen; zu: nur Anzahl und Kilometer */
+.overlay-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0;
+  border: 0; background: none; color: inherit; text-align: left;
 }
-.map-overlay #selection-warning { margin: 4px 0 0; }
+.overlay-toggle strong { flex: 1 1 auto; font-size: 1rem; }
+.overlay-toggle .smallnote { white-space: nowrap; }
+.overlay-toggle .ic { transition: transform .2s ease; }
+.map-overlay.open .overlay-toggle .ic { transform: rotate(180deg); }
+#overlay-body { max-height: calc(var(--map-h) * .45); overflow: auto; overscroll-behavior: contain; padding-bottom: 8px; border-top: var(--bw) solid var(--border); }
+.map-overlay .combo-summary { margin: 6px 0 0; font-size: .9375rem; white-space: pre-line; }
+.map-overlay #selection-warning { margin: 0 0 8px; }
 .map-fab {
   position: absolute; right: 12px; bottom: 36px; z-index: 600;
   display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
