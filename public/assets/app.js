@@ -384,7 +384,36 @@ function setupAppearance(){
  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
  applyAppearance();
 }
+// GPX auf dem Handy: nicht als Download öffnen (iOS zeigt in der Homescreen-App dann eine
+// Dateivorschau ohne Zurück-Knopf), sondern selbst laden und das Teilen-Menü öffnen
+// (dort u. a. "In Naviki öffnen"); die App bleibt im Vordergrund. Ohne Datei-Teilen (PC) bleibt
+// der normale Download. Geladen wird schon beim Antippen, damit das Teilen in der Geste bleibt.
+const gpxCache=new Map();
+function gpxFile(url){
+ if(!gpxCache.has(url))gpxCache.set(url,fetch(url,{credentials:'same-origin'}).then(async r=>{
+   if(!r.ok||!(r.headers.get('content-type')||'').includes('gpx'))throw new Error('GPX konnte nicht geladen werden.');
+   const name=((r.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)||[])[1]||'tour.gpx';
+   return new File([await r.blob()],name,{type:'application/gpx+xml'});
+ }).catch(err=>{gpxCache.delete(url);throw err;}));
+ return gpxCache.get(url);
+}
+function canShareFiles(){try{return !!navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.gpx',{type:'application/gpx+xml'})]});}catch(e){return false;}}
+function setupGpxShare(){
+ const link=e=>e.target.closest?.('a[href*="action=gpx"]');
+ document.addEventListener('pointerdown',e=>{const a=link(e);if(a&&canShareFiles())gpxFile(a.href).catch(()=>{});},{passive:true});
+ document.addEventListener('click',async e=>{
+   const a=link(e);if(!a||!canShareFiles())return;
+   e.preventDefault();
+   try{const file=await gpxFile(a.href);await navigator.share({files:[file],title:file.name});}
+   catch(err){
+     if(err.name==='AbortError')return; // Teilen abgebrochen
+     if(err.name==='NotAllowedError'){toast('GPX ist bereit – bitte noch einmal tippen.');return;}
+     toast(err.message||'Teilen nicht möglich.',true);
+   }
+ });
+}
 function setupEvents(){
+ setupGpxShare();
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
