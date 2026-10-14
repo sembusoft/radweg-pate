@@ -18,9 +18,12 @@ public/               → genau das, was auf den Server geht (Webroot radweg-pat
   config.example.php  Vorlage; die echte config.php steht nicht im Repo
   assets/             app.js, style.css, Icons, vendor/leaflet-1.9.4
 scripts/
-  check.mjs           statische Prüfungen (Version, CSP, SW-Shell, JS-Syntax)
+  check.mjs           statische Prüfungen (Version, CSP, Icons, SW-Shell, JS-Syntax)
+  contrast.mjs        Kontrast aller Farb-Tokens in 4 Themes (WCAG)
+  build-icons.mjs     erzeugt assets/icons.svg aus Tabler Icons
   smoke-test.mjs      Rauchtest gegen einen laufenden Server
-docs/                 Deployment, alte Installationsanleitung
+docs/                 DEPLOY.md, DESIGN_SYSTEM.md, alte Installationsanleitung
+PROJEKTANWEISUNGEN.md Regeln des Projekts (mobile first, Sicherheit, Arbeitsweise)
 .github/workflows/    test.yml (bei jedem Push), deploy.yml (nur von Hand)
 ```
 

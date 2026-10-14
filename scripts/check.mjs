@@ -40,7 +40,7 @@ for (const f of ['index.php', 'assets/app.js']) {
   ? ok('config.example.php: Datenordner radwegpate_private') : fail('config.example.php: APP_DATA_DIR passt nicht zur Sperre in .htaccess');
 
 // 4. Asset-Verweise in index.php existieren
-for (const m of index.matchAll(/(?:src|href)="(assets\/[^"?]+)/g)) {
+for (const m of index.matchAll(/(?:src|href)="(assets\/[^"?#]+)/g)) {
   existsSync(root + m[1]) ? null : fail('index.php verweist auf fehlende Datei ' + m[1]);
 }
 ok('index.php: Asset-Verweise geprüft');
@@ -50,6 +50,20 @@ for (const f of ['assets/app.js', 'sw.js']) {
   try { execFileSync(process.execPath, ['--check', root + f], { stdio: 'pipe' }); ok('Syntax ' + f); }
   catch (e) { fail('Syntax ' + f + ': ' + e.stderr); }
 }
+
+// 5b. Jedes benutzte Icon steckt im Sprite (sonst bleibt die Stelle leer – ohne Fehlermeldung)
+const sprite = read('assets/icons.svg');
+const have = new Set([...sprite.matchAll(/<symbol id="([^"]+)"/g)].map(m => m[1]));
+const usedIcons = new Set();
+for (const m of index.matchAll(/icons\.svg#([\w-]+)/g)) usedIcons.add(m[1]);
+for (const m of read('assets/app.js').matchAll(/ic\(([^)]*)\)/g)) for (const n of m[1].matchAll(/(?<![=!]==?\s*)'([\w-]+)'/g)) usedIcons.add(n[1]);
+const missingIcons = [...usedIcons].filter(n => !have.has(n));
+missingIcons.length ? fail('Icons fehlen im Sprite (scripts/build-icons.mjs ergänzen): ' + missingIcons.join(', '))
+  : ok(`Icons: ${usedIcons.size} benutzt, alle im Sprite (${have.size})`);
+
+// 5c. Kontrast der Farb-Tokens in allen vier Themes
+try { console.log(execFileSync(process.execPath, [new URL('./contrast.mjs', import.meta.url).pathname], { encoding: 'utf8' }).trim()); }
+catch (e) { fail('Kontrast:\n' + e.stdout); }
 
 // 6. Keine Secrets im Repository-Stand
 if (existsSync(root + 'config.php')) console.log('hinweis config.php liegt lokal vor (gitignored, wird nicht deployt)');

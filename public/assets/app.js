@@ -3,11 +3,14 @@ const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 const state = { csrf:'', routes:[], entries:[], installed:false, loggedIn:false, tab:'map', coords:null, editing:null, mapData:null, leafletMap:null, layerGroups:{},selectedRoute:'01',visibleRoutes:null,mapShown:false,startTourIds:[] };
 // Externe Karten-Ziellinks verwenden ausschließlich echte KML-Wendepunkt-Placemarks. Keine KML-Route wird extern versprochen.
-const STATUSES = { gut:'✓ In Ordnung', hinweis:'ⓘ Hinweis', mangel:'! Mangel' };
+const STATUSES = { gut:'In Ordnung', hinweis:'Hinweis', mangel:'Mangel' };
+// Tabler-Icon aus dem Sprite (assets/icons.svg). Nur Namen verwenden, die in scripts/build-icons.mjs stehen –
+// scripts/check.mjs prüft das.
+const ic=n=>`<svg class="ic" aria-hidden="true"><use href="assets/icons.svg#${n}"/></svg>`;
 function esc(x=''){return String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function textDate(iso){if(!iso) return '';const [y,m,d]=iso.split('-');return `${d}.${m}.${y}`;}
 function todayLocal(){const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;}
-function toast(message,err=false){const el=$('#toast');el.textContent=message;el.style.background=err?'#8e352e':'#123f2c';el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,4200);}
+function toast(message,err=false){const el=$('#toast');el.textContent=message;el.classList.toggle('toast-error',!!err);el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,4200);}
 async function api(action, method='GET', payload=null){
   const opts={method,credentials:'same-origin',headers:{'X-CSRF-Token':state.csrf}};
   if(payload instanceof FormData){opts.body=payload;}
@@ -38,7 +41,7 @@ function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
 async function loadData(){const data=await api('bootstrap');state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
-function selectTab(tab){state.tab=tab;state.mapShown=tab==='map';$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0,behavior:'smooth'});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
+function selectTab(tab){state.tab=tab;state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
 function entryIssues(e){return Array.isArray(e.issues)?e.issues:((e.status==='mangel'||e.status==='hinweis'||e.issueKind||e.place)?[{id:'i_'+e.id,tourId:e.tourId,kind:ISSUE_KINDS.includes(e.issueKind)?e.issueKind:'Sonstiges',place:e.place||'',description:'',status:'offen',coords:e.coords||null,photos:[]}]:[]);}
 function counts(tourId){return state.entries.filter(e=>entryRoutes(e).includes(tourId));}
@@ -59,26 +62,30 @@ function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))
 function routeCard(r){
  const entries=counts(r.id), recent=entries[0], tourIssueCount=entries.reduce((n,e)=>n+entryIssues(e).filter(i=>i.tourId===r.id).length,0),openCount=pendingIssues([r.id]).length;
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
- const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">◈ In Karte zeigen</button> <a class="btn outline small" href="${mapDownloadUrl(r.id)}">↓ GPX für Komoot</a>`:'<span class="map-empty">Noch keine KML-Linie zugeordnet</span>';
+ const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button> <a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Komoot</a>`:'<span class="map-empty">Noch keine KML-Linie zugeordnet</span>';
  return `<article class="route-card">
-  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${r.type==='runde'?'⟲':'↗'}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div></div>
+  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div></div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
   <div class="route-links">${mapLinks}</div>
-  <div class="route-bottom"><button type="button" class="text-btn" data-route-edit="${r.id}">⚙ Details bearbeiten</button><button type="button" class="btn primary small" data-tour-start="${r.id}">🚲 Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">＋ Fahrt eintragen</button></div>
+  <div class="route-bottom"><button type="button" class="text-btn" data-route-edit="${r.id}">${ic('pencil')} Details</button><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button></div>
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
 }
 function render(){
  $('#stat-routes').textContent=state.routes.length;
  $('#stat-entries').textContent=state.entries.length;
- $('#stat-issues').textContent=allIssues().filter(item=>isPending(item.issue)).length;
+ $('#stat-entries-label').textContent=state.entries.length===1?'Prüfung':'Prüfungen';
+ const openIssues=allIssues().filter(item=>isPending(item.issue)).length;
+ $('#stat-issues').textContent=openIssues;
+ $('#kpi-issues').classList.toggle('kpi-warn',openIssues>0);
+ $('#kpi-issues').classList.toggle('kpi-ok',openIssues===0);
  $('#route-list').innerHTML=state.routes.map(routeCard).join('');
  const choices=state.routes.map(r=>`<option value="${r.id}">${esc(r.id)} · ${esc(r.name)}</option>`).join('');
  const previous=$('#filter-tour').value;
  $('#filter-tour').innerHTML='<option value="">Alle Touren</option>'+choices;
  $('#filter-tour').value=previous;
  $('#entry-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tourIds" value="${esc(r.id)}"><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
- $('#settings-routes').innerHTML=state.routes.map(r=>`<div class="settings-route"><span>${esc(r.id)} · ${esc(r.name)}</span><button type="button" class="text-btn" data-route-edit="${r.id}">Bearbeiten ↗</button></div>`).join('');
+ $('#settings-routes').innerHTML=state.routes.map(r=>`<div class="settings-route"><span>${esc(r.id)} · ${esc(r.name)}</span><button type="button" class="text-btn" data-route-edit="${r.id}">${ic('pencil')} Bearbeiten</button></div>`).join('');
  renderDiary();if(state.mapData)renderMap();
 }
 function renderDiary(){
@@ -94,15 +101,15 @@ function renderDiary(){
    const ids=entryRoutes(e),issues=entryIssues(e),pendingCount=issues.filter(isPending).length;
    const routeNames=ids.map(id=>esc(id+' · '+(routes.get(id)?.name||'Tour'))).join(' · ');
    const photoHTML=(e.photos||[]).length?`<div class="photos-row">${e.photos.map(p=>`<a href="api.php?action=photo&id=${p.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${p.id}&thumb=1" alt="Foto: ${esc(p.name)}" width="102" height="88" loading="lazy"></a>`).join('')}</div>`:'';
-   const pos=e.coords?`<a class="text-btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.coords.lat+','+e.coords.lon)}" rel="noopener noreferrer" target="_blank">📍 Fahrt-GPS ↗</a>`:'';
+   const pos=e.coords?`<a class="text-btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.coords.lat+','+e.coords.lon)}" rel="noopener noreferrer" target="_blank">${ic('map-pin')} Fahrt-GPS</a>`:'';
    const issueTable=issues.length?`<div class="issue-list"><strong>${issues.length} ${issues.length===1?'Mangel / Beobachtung':'Mängel / Beobachtungen'}</strong>${issues.map((issue,i)=>{
-     const point=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(issue.coords.lat+','+issue.coords.lon)}">📍 GPS</a>`:'';
+     const point=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(issue.coords.lat+','+issue.coords.lon)}">${ic('map-pin')} GPS</a>`:'';
      const pics=(issue.photos||[]).length?`<div class="photos-row">${issue.photos.map(photo=>`<a href="api.php?action=photo&id=${photo.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${photo.id}&thumb=1" width="86" height="72" loading="lazy" alt="Mängelfoto ${esc(photo.name)}"></a>`).join('')}</div>`:'';
      const isDone=!isPending(issue);
-     const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?'↶ Wieder öffnen':'✓ Als erledigt markieren'}</button>`;
+     const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?ic('arrow-back-up')+' Wieder öffnen':ic('check')+' Als erledigt markieren'}</button>`;
      return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
    }).join('')}</div>`:'';
-   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div><span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?'! '+pendingCount+' offen':issues.length?'✓ Alle erledigt':'✓ In Ordnung'}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}<div class="entry-bottom"><button class="text-btn" type="button" data-entry-edit="${e.id}">✎ Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">Löschen</button></div></article>`;
+   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div><span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}<div class="entry-bottom"><button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div></article>`;
  }).join(''):'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>';
 }
 function renderStartIssues(){
@@ -114,16 +121,16 @@ function renderStartIssues(){
  const nav=$('#start-navigation');
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   nav.innerHTML=`<strong>Navigation</strong><div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">↗ Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">↗ Apple · Ziel</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">◈ OSM-Karte · Originalstrecke</button><a class="btn outline small" href="${mapDownloadUrl(ids[0])}">↓ GPX · Komoot</a></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
+   nav.innerHTML=`<strong>Navigation</strong><div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Originalstrecke</button><a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Komoot</a></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }else {
    const check=comboCheck(ids);
-   nav.innerHTML=`<strong>Navigation der Kombination</strong><div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">↓ Kombinierte GPX für Komoot</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>◈ Touren in OSM-Karte anzeigen</button></div>`;
+   nav.innerHTML=`<strong>Navigation der Kombination</strong><div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Komoot</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
  }
- if(!open.length){wrap.innerHTML='<div class="no-pending">✓ Für die ausgewählten Touren sind aktuell keine offenen Mängel eingetragen.</div>';return;}
+ if(!open.length){wrap.innerHTML='<div class="no-pending">'+ic('circle-check')+' Für die ausgewählten Touren sind aktuell keine offenen Mängel eingetragen.</div>';return;}
  wrap.innerHTML=open.map(({entry,issue})=>{
-    const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(issue.coords.lat+','+issue.coords.lon)}">📍 Standort öffnen</a>`:'<span class="smallnote">Kein GPS-Punkt erfasst</span>';
+    const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(issue.coords.lat+','+issue.coords.lon)}">${ic('map-pin')} Standort öffnen</a>`:'<span class="smallnote">Kein GPS-Punkt erfasst</span>';
     const pics=(issue.photos||[]).slice(0,5).map(photo=>`<a href="api.php?action=photo&id=${esc(photo.id)}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${esc(photo.id)}&thumb=1" loading="lazy" alt="Foto ${esc(photo.name)}" width="96" height="76"></a>`).join('');
-    return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">✓ Erledigt</button></div></article>`;
+    return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">${ic('check')} Erledigt</button></div></article>`;
  }).join('');
 }
 function startTour(ids){
@@ -161,14 +168,14 @@ function makeIssueRow(issue={}){
  const photos=(issue.photos||[]).map(p=>`<div class="photo-tile"><a href="api.php?action=photo&id=${p.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${p.id}&thumb=1" alt="${esc(p.name)}"></a><button type="button" title="Foto entfernen" data-photo-delete="${p.id}">×</button></div>`).join('');
  const el=document.createElement('div');el.className='issue-row';el.dataset.issueId=id;
  if(issue.coords){el.dataset.lat=String(issue.coords.lat);el.dataset.lon=String(issue.coords.lon);}
- el.innerHTML=`<div class="issue-row-title"><strong>Einzelmangel</strong><button type="button" class="text-btn" data-remove-issue>Zeile entfernen ×</button></div>
+ el.innerHTML=`<div class="issue-row-title"><strong>Einzelmangel</strong><button type="button" class="text-btn" data-remove-issue>${ic('trash')} Entfernen</button></div>
   <div class="issue-fields"><label>Tour<select data-issue="tourId" required>${opt}</select></label>
   <label>Art<select data-issue="kind">${ISSUE_KINDS.map(k=>`<option value="${esc(k)}" ${k===(issue.kind||'Sonstiges')?'selected':''}>${esc(k)}</option>`).join('')}</select></label>
   <label>Status<select data-issue="status">${Object.entries(ISSUE_STATES).map(([k,label])=>`<option value="${k}" ${k===(issue.status||'offen')?'selected':''}>${label}</option>`).join('')}</select></label>
   <label class="issue-wide">Ort / Abschnitt<input data-issue="place" maxlength="180" value="${esc(issue.place||'')}" placeholder="z. B. Brücke, Straßenname, Kreuzung"></label>
   <label class="issue-wide">Beschreibung<textarea data-issue="description" maxlength="3000" rows="2" placeholder="Was ist defekt oder aufgefallen?">${esc(issue.description||'')}</textarea></label></div>
-  <div class="issue-media"><span class="smallnote" data-issue-pos>${issue.coords?`GPS: ${Number(issue.coords.lat).toFixed(6)}, ${Number(issue.coords.lon).toFixed(6)}`:'GPS: nicht erfasst'}</span><button type="button" class="btn outline small" data-issue-gps>⌖ GPS erfassen</button><button type="button" class="link-btn" data-issue-clear ${issue.coords?'':'hidden'}>Entfernen</button></div>
-  <label class="issue-file">📷 Fotos zu diesem Mangel (max. 5)<input type="file" data-issue-photos accept="image/*" multiple></label>
+  <div class="issue-media"><span class="smallnote" data-issue-pos>${issue.coords?`GPS: ${Number(issue.coords.lat).toFixed(6)}, ${Number(issue.coords.lon).toFixed(6)}`:'GPS: nicht erfasst'}</span><button type="button" class="btn outline small" data-issue-gps>${ic('current-location')} GPS erfassen</button><button type="button" class="link-btn" data-issue-clear ${issue.coords?'':'hidden'}>Entfernen</button></div>
+  <label class="issue-file"><span>${ic('camera')} Fotos zu diesem Mangel (max. 5)</span><input type="file" data-issue-photos accept="image/*" multiple></label>
   <div class="photos-row">${photos}</div>`;
  $('#entry-issues').append(el);return el;
 }
@@ -237,6 +244,28 @@ function exportCsv(){
  const csv='\uFEFF'+[cols,...rows].map(row=>row.map(quote).join(';')).join('\r\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`radwegpate-maengel-${todayLocal()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
+// Darstellung (Farbschema, Schriftgröße) – je Gerät im localStorage. theme-init.js setzt beides
+// schon vor dem ersten Zeichnen; hier nur Auswahl, Umschalten und 'auto' bei Systemwechsel.
+const THEME_COLORS={light:'#f3f7f4',dark:'#0d1612','hc-light':'#ffffff','hc-dark':'#000000'};
+function storedPref(key,fallback){try{return localStorage.getItem(key)??fallback;}catch(e){return fallback;}}
+function storePref(key,value){try{localStorage.setItem(key,value);}catch(e){}}
+function effectiveTheme(choice){if(choice!=='auto')return choice;return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+function applyAppearance(){
+ const choice=storedPref('radwegpate-theme','auto'),fs=storedPref('radwegpate-fs','');
+ const theme=effectiveTheme(choice),root=document.documentElement;
+ root.setAttribute('data-theme',theme);
+ root.classList.toggle('fs-lg',fs==='fs-lg');root.classList.toggle('fs-xl',fs==='fs-xl');
+ document.querySelector('meta[name="theme-color"]')?.setAttribute('content',THEME_COLORS[theme]||THEME_COLORS.light);
+ for(const r of $$('input[name="theme"]'))r.checked=r.value===choice;
+ for(const r of $$('input[name="fontsize"]'))r.checked=r.value===fs;
+ state.leafletMap?.invalidateSize();
+}
+function setupAppearance(){
+ for(const r of $$('input[name="theme"]'))r.addEventListener('change',()=>{storePref('radwegpate-theme',r.value);applyAppearance();});
+ for(const r of $$('input[name="fontsize"]'))r.addEventListener('change',()=>{storePref('radwegpate-fs',r.value);applyAppearance();});
+ matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
+ applyAppearance();
+}
 function setupEvents(){
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
@@ -248,7 +277,9 @@ function setupEvents(){
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
  $('#settings-button').addEventListener('click',()=>selectTab('settings'));
- for(const id of ['new-entry-hero','new-entry-diary','mobile-add'])$('#'+id).addEventListener('click',()=>openEntry());
+ for(const id of ['new-entry-diary','mobile-add'])$('#'+id).addEventListener('click',()=>openEntry());
+ for(const k of $$('.kpi'))k.addEventListener('click',()=>{if(k.dataset.goto==='diary'){$('#filter-tour').value='';$('#filter-status').value=k.dataset.filter||'';renderDiary();}selectTab(k.dataset.goto);});
+ setupAppearance();
  $('#add-issue').addEventListener('click',()=>{if(!selectedEntryTours().length){toast('Zuerst eine Tour auswählen.',true);return;}if($$('.issue-row').length>=25){toast('Maximal 25 Mängel.',true);return;}makeIssueRow();});
  $('#entry-routes').addEventListener('change',refreshIssueTourOptions);
  $('#entry-issues').addEventListener('click',event=>{
@@ -434,11 +465,11 @@ function renderSelectionSummary(){
  warning.textContent=n>1?check.message:n===1?'Eine Tour – direkt als GPX exportieren.':'Wähle eine oder mehrere Touren aus der Liste oben.';
  warning.classList.toggle('error-note',n>1&&!check.ok);
  const link=$('#selection-gpx');link.hidden=!check.ok;
- if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.textContent=n===1?'↓ Tour als GPX für Komoot':'↓ Kombination als GPX für Komoot';}
+ if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Komoot':' Kombination als GPX für Komoot');}
  else link.removeAttribute('href');
  $('#selection-diary').disabled=n===0;
  $('#selection-start').disabled=n===0;
- $('#selection-start').textContent=n?`🚲 Tour starten · ${pendingIssues(ids).length} offene Mängel`:'🚲 Tour starten · Mängel prüfen';
+ $('#selection-start').innerHTML=ic('bike')+(n?` Tour starten · ${pendingIssues(ids).length} offene Mängel`:' Tour starten · Mängel prüfen');
  $('#selection-zoom').disabled=n===0;
  const nav=$('#selection-navigation');
  if(n===1){
@@ -446,9 +477,9 @@ function renderSelectionSummary(){
    if(maps){
      const target=maps.point;
      nav.innerHTML=`<p class="smallnote"><b>Ziel: KML-Wendepunkt an der Gemeindegrenze</b> (${target[1].toFixed(6)}, ${target[0].toFixed(6)}). Google und Apple berechnen ihre eigene Route dorthin. Die Originalstrecke siehst du in unserer OpenStreetMap-basierten Karte (nicht auf der externen OSM-Webseite).</p><div class="navigation-buttons">
-       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">↗ Google Maps · Ziel</a>
-       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">↗ Apple Karten · Ziel</a>
-       <button class="btn outline small" type="button" data-show-map-route="${esc(id)}">↗ OSM-Karte · Originalstrecke</button></div>`;
+       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google Maps · Ziel</a>
+       <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple Karten · Ziel</a>
+       <button class="btn outline small" type="button" data-show-map-route="${esc(id)}">${ic('map')} Originalstrecke auf der Karte</button></div>`;
    } else if(routeById(id)?.type==='runde'){
      nav.innerHTML='<p class="smallnote">Rundtour: Start und Ziel sind identisch. Für die <b>vollständige Streckenführung</b> bitte GPX herunterladen und in Komoot importieren. Google/Apple/OSM können diese KML-Rundtour nicht per Link übernehmen.</p>';
    } else {
@@ -535,14 +566,14 @@ async function withIds(srcs){
 async function sendKmlImport(ev){ev.preventDefault();const file=$('#kml-file').files?.[0];if(!file)return;
  if(file.size>8*1024*1024){toast('KML zu groß (maximal 8 MB).',true);return;}
  if(!/\.kml$/i.test(file.name)){toast('Bitte eine .kml-Datei auswählen (nicht .kmz).',true);return;}
- const button=ev.submitter;button.disabled=true;button.textContent='Lese KML …';
+ const button=ev.submitter;button.disabled=true;button.innerHTML=ic('refresh')+' Lese KML …';
  try{
    const text=await file.text();const sources=await withIds(importKmlText(text));
    const assignments={};for(const src of sources){assignments[src.id]=state.mapData.assignments?.[src.id]||guessTourFromName(src.name);}
    if(!window.confirm(`${sources.length} KML-Ebenen mit ${sources.reduce((n,s)=>n+s.lines.length,0)} Linien und ${sources.reduce((n,s)=>n+s.turnpoints.length,0)} Wendepunkten importieren? Fahrten und Fotos bleiben erhalten.`))return;
    await api('mapImport','POST',{sources,assignments,fileName:file.name});
    await loadMap();zoomMap();toast(`${sources.length} Ebenen importiert. Bitte Zuordnung prüfen.`);
- }catch(e){toast('KML-Import: '+e.message,true);}finally{button.disabled=false;button.textContent='↑ KML importieren';}
+ }catch(e){toast('KML-Import: '+e.message,true);}finally{button.disabled=false;button.innerHTML=ic('upload')+' KML importieren';}
 }
 async function saveMapAssignments(){
  const assignments={};for(const sel of $$('[data-source-assign]'))assignments[sel.dataset.sourceAssign]=sel.value;

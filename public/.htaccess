@@ -15,11 +15,11 @@ RedirectMatch 404 "(?i)^/(.*/)?radwegpate_private(/|$)"
 <IfModule mod_headers.c>
     # Service Worker und Manifest immer frisch prüfen, sonst bleibt eine alte
     # App-Version auf dem Handy hängen.
-    <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+    <FilesMatch "^(sw\.js|manifest\.webmanifest|icons\.svg|theme-init\.js)$">
         Header set Cache-Control "no-cache"
     </FilesMatch>
     # Versionierte Assets (?v=...) dürfen lange im Cache bleiben.
-    <FilesMatch "^(?!sw\.js$).+\.(css|js|png|svg)$">
+    <FilesMatch "^(?!(sw\.js|icons\.svg|theme-init\.js)$).+\.(css|js|png|svg)$">
         Header set Cache-Control "public, max-age=604800"
     </FilesMatch>
 </IfModule>

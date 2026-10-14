@@ -1,5 +1,5 @@
 // Versionsnummer = APP_VERSION aus version.php (CI prüft das, scripts/check.mjs).
-const CACHE_NAME = 'radwegpate-3.4.0';
+const CACHE_NAME = 'radwegpate-3.5.0';
 
 // App-Shell ohne ?v=-Parameter: index.php hängt ?v=<Version> an, der Abgleich
 // läuft unten mit ignoreSearch. Eine neue Version erkennt der Browser an der
@@ -9,6 +9,8 @@ const SHELL = [
   './assets/style.css',
   './assets/app.js',
   './assets/icon.svg',
+  './assets/icons.svg',
+  './assets/theme-init.js',
   './assets/icon-192.png',
   './assets/vendor/leaflet-1.9.4/leaflet.css',
   './assets/vendor/leaflet-1.9.4/leaflet.js',
