@@ -110,9 +110,9 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
             </article>
             <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Datensicherung</h3><p class="muted">Touren, Prüfungen und Einzelmängel als JSON-Datei. Fotos sind nicht enthalten – sie liegen im Datenordner auf dem Webspace und werden dort gesichert.</p><a href="api.php?action=export" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> JSON-Sicherung herunterladen</a></article>
           </div><p class="smallnote">Zum Homescreen: Safari „Teilen → Zum Home-Bildschirm“, Chrome „Installieren“. Für Änderungen und Foto-Uploads ist eine Internetverbindung nötig.</p>
+          <p class="smallnote app-imprint">Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</p>
         </section>
       </main>
-      <footer>Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</footer>
       <nav class="bottom-nav" aria-label="Hauptbereiche">
         <button type="button" class="tab active" data-tab="map"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#map"/></svg><span>Karte</span></button>
         <button type="button" class="tab" data-tab="routes"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg><span>Touren</span></button>
