@@ -152,10 +152,19 @@ jobs:
             echo '```'
             ssh deploy "ls -la '$DATA'" || true
             echo '```'
-            echo -n "PHP-Sicht: "
-            ssh deploy "cd '${{ vars.REMOTE_PATH }}' && php -r 'require \"config.php\"; echo APP_DATA_DIR, is_writable(APP_DATA_DIR) ? \" – schreibbar\" : \" – NICHT schreibbar\";'" || echo "config.php nicht lesbar"
-            echo ""
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # config.php muss genau auf den gesperrten Ordner zeigen. Jeder andere Ordner
+          # im Webroot wäre öffentlich: PHP darf dort keine .htaccess anlegen, und
+          # public/.htaccess sperrt nur radwegpate_private.
+          IST=$(ssh deploy "cd '${{ vars.REMOTE_PATH }}' && php -r 'require \"config.php\"; echo rtrim(APP_DATA_DIR, \"/\"), \"|\", is_writable(APP_DATA_DIR) ? \"schreibbar\" : \"NICHT schreibbar\";'" || echo "|config.php nicht lesbar")
+          PFAD="${IST%%|*}"; RECHT="${IST#*|}"
+          echo "**APP_DATA_DIR laut config.php:** \`$PFAD\` – $RECHT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PFAD" != "$DATA" ]; then
+            echo "::error::APP_DATA_DIR in der config.php auf dem Server ist '$PFAD', erwartet '$DATA'. Dieser Ordner wäre von außen NICHT gesperrt. config.php korrigieren: define('APP_DATA_DIR', __DIR__ . '/radwegpate_private');"
+            exit 1
+          fi
+          [ "$RECHT" = "schreibbar" ] || { echo "::error::Datenordner $DATA ist für PHP nicht schreibbar."; exit 1; }
 
       # Immer zuerst zeigen, was passieren würde. --checksum vergleicht den Inhalt:
       # Git kennt keine Zeitstempel, ohne -c hielte rsync jede Datei für geändert.
