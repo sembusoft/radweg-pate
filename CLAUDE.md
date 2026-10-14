@@ -16,6 +16,6 @@ Ansprechpartner: Volker. **Antworten auf Deutsch, knapp: Ergebnis zuerst, Begrü
 - Farben nur über Tokens, Schrift nur in `rem`, Trefferflächen ≥ 44 px, Icons nur aus dem Tabler-Sprite.
 - Nach Änderung an JS/CSS/Icons/index.php: `APP_VERSION` (`public/version.php`) und `CACHE_NAME`
   (`public/sw.js`) gemeinsam erhöhen.
-- Vor dem Push: `node scripts/check.mjs`.
+- Vor dem Push: `.\rp.ps1 test` (Docker; sonst `node scripts/check.mjs`). Lokal starten: `.\rp.ps1 start` → http://localhost:8090.
 - Befehle für Volkers Rechner in PowerShell. Arbeitsordner `C:\Dev\Radweg-Pate`, Branch `main`.
 - Keine Geheimnisse ins Repo; `config.php` und `radwegpate_private/` bleiben auf dem Server.

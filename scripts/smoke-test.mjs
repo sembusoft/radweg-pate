@@ -164,6 +164,17 @@ async function main() {
     check(left.length === 0 && thumbs.length === 0, 'keine Fotodateien übrig', left.concat(thumbs).join(','));
   }
 
+  // Nur hinter Apache (lokale Docker-Umgebung, CHECK_HTACCESS=1): Sperren der .htaccess.
+  // php -S in der CI wertet keine .htaccess aus – dort entfällt dieser Teil.
+  if (process.env.CHECK_HTACCESS === '1') {
+    for (const p of ['radwegpate_private/install.json', 'radwegpate_private/entries.json', 'radwegpate_private/', 'config.php', 'version.php']) {
+      const res = await fetch(BASE + '/' + p, { redirect: 'manual' });
+      check(res.status === 403 || res.status === 404, `.htaccess sperrt /${p}`, 'HTTP ' + res.status);
+    }
+    const swRes = await fetch(BASE + '/sw.js');
+    check((swRes.headers.get('cache-control') || '').includes('no-cache'), 'sw.js mit Cache-Control no-cache', swRes.headers.get('cache-control'));
+  }
+
   r = await a.api('logout', { method: 'POST' });
   check(r.data?.ok, 'Abmelden');
 

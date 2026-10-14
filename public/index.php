@@ -57,24 +57,33 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
       </header>
       <main>
         <section id="map-view" class="view">
-          <div class="section-heading"><div><h2>Meine Streckenkarte</h2><p class="muted">KML aus My Maps · Routen einzeln ein- und ausblenden.</p></div><button type="button" class="btn outline small" id="map-zoom"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#arrows-maximize"/></svg> Alle zeigen</button></div>
-          <div class="map-layout">
-            <div class="map-container"><div id="pate-map" class="pate-map" role="region" aria-label="Streckenkarte Senden"></div><div id="map-placeholder" class="map-placeholder" hidden>Bitte zuerst unter Einstellungen deine KML-Datei importieren.</div></div>
-            <aside class="map-sidebar">
-              <div class="map-sidebar-head"><strong>Alle Touren</strong><span id="map-count" class="muted">0 / 7</span></div>
-              <p class="smallnote selection-help">Beliebig viele Touren anklicken. Jede Auswahl wird auf der Karte sichtbar.</p>
-              <div id="map-route-picker" class="map-picker"></div>
-              <div class="selection-controls"><button type="button" class="text-btn" id="selection-all">Alle auswählen</button><button type="button" class="text-btn" id="selection-none">Auswahl aufheben</button></div>
-              <section class="selection-summary" aria-labelledby="selection-title">
-                <div class="selection-heading"><strong id="selection-title">Ausgewählte Touren</strong><span id="selection-count" class="smallnote">0 gewählt</span></div>
-                <p id="selection-summary" class="combo-summary">Noch keine Tour ausgewählt.</p>
-                <p id="selection-warning" class="smallnote" aria-live="polite"></p>
+          <div class="section-heading"><div><h2>Meine Streckenkarte</h2><p class="muted">KML aus My Maps · Touren unten an- und abwählen.</p></div>
+            <div class="heading-actions"><button type="button" class="btn outline small" id="map-zoom"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#arrows-maximize"/></svg> Alle zeigen</button><button type="button" class="btn outline small" id="selection-toggle"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#square-check"/></svg> Alle anwählen</button></div></div>
+          <div class="map-stage" id="map-stage">
+            <div class="map-slider">
+              <section class="actions-pane" id="selection-actions" aria-labelledby="actions-title" inert>
+                <h3 id="actions-title">Aktionen zur Auswahl</h3>
                 <div class="combo-buttons"><a class="btn primary" id="selection-gpx" hidden href="#"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> GPX für Komoot</a><button type="button" class="btn primary" id="selection-start" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#bike"/></svg> Tour starten · Mängel prüfen</button><button type="button" class="btn outline" id="selection-diary" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#plus"/></svg> Kontrollfahrt dokumentieren</button><button type="button" class="btn outline" id="selection-zoom" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#arrows-maximize"/></svg> Auswahl auf Karte zeigen</button></div>
                 <div id="selection-navigation" class="selection-navigation"></div>
+                <p class="map-hint">Die Auswahl steuert die Karte, den GPX-Export und die Touren einer neuen Streckenprüfung. Die Linien kommen ausschließlich aus deiner KML – keine erfundenen Wege.</p>
               </section>
-              <p class="map-hint">Die Auswahl steuert die Karte, den GPX-Export und die Touren einer neuen Streckenprüfung. Die Linien kommen ausschließlich aus deiner KML – keine erfundenen Wege.</p>
-            </aside>
+              <div class="map-pane map-container">
+                <div id="pate-map" class="pate-map" role="region" aria-label="Streckenkarte Senden"></div>
+                <div id="map-placeholder" class="map-placeholder" hidden>Bitte zuerst unter Einstellungen deine KML-Datei importieren.</div>
+                <div class="map-overlay" aria-live="polite">
+                  <div class="selection-heading"><strong id="selection-title">Ausgewählte Touren</strong><span id="selection-count" class="smallnote">0 gewählt</span></div>
+                  <p id="selection-summary" class="combo-summary">Noch keine Tour ausgewählt.</p>
+                  <p id="selection-warning" class="smallnote error-note" hidden></p>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="map-fab" id="map-fab" hidden aria-expanded="false" aria-controls="selection-actions" aria-label="Aktionen zur Auswahl zeigen" title="Aktionen zur Auswahl"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#list-check"/></svg></button>
           </div>
+          <aside class="map-sidebar">
+            <div class="map-sidebar-head"><strong>Alle Touren</strong><span id="map-count" class="muted">0 / 7</span></div>
+            <p class="smallnote selection-help">Touren anklicken – jede Auswahl erscheint auf der Karte. Mit dem runden Knopf auf der Karte geht es zu GPX, Tour starten und Kontrollfahrt.</p>
+            <div id="map-route-picker" class="map-picker"></div>
+          </aside>
         </section>
         <section id="routes-view" class="view">
           <div class="section-heading"><div><h2>Deine Touren</h2><p class="muted">Die Kartendaten werden zentral per KML eingespielt.</p></div></div>

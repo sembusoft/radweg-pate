@@ -103,9 +103,11 @@ Ausführlich und mit Begründung in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM
 ## 6. Prüfen vor dem Push
 
 ```powershell
-node scripts\check.mjs        # Version, CSP, Icons, Kontrast (4 Themes), JS-Syntax
-php -l public\api.php          # falls PHP lokal vorhanden
+.\rp.ps1 test     # Docker: check.mjs + Rauchtest hinter Apache inkl. .htaccess-Sperren
 ```
+
+Ohne Docker genügt notfalls `node scripts\check.mjs`. Lokal ausprobieren: `.\rp.ps1 start`
+→ <http://localhost:8090> (Details in `README.md`).
 
 Die CI (`test.yml`) macht zusätzlich den Rauchtest gegen einen echten PHP-Server (PHP 8.1 und 8.3).
 Oberflächenänderungen außerdem am Handy (oder 390 px im Browser) in **Hell und Kontrast dunkel**

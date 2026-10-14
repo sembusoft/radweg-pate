@@ -17,6 +17,8 @@ export const ICONS = [
   'bike', 'player-play', 'navigation', 'map-pin', 'arrows-maximize', 'external-link', 'download', 'upload', 'file-upload',
   // Tagebuch und Mängel
   'pencil', 'trash', 'check', 'arrow-back-up', 'camera', 'current-location', 'info-circle', 'list-check',
+  // Karte: Auswahl umschalten
+  'square-check', 'square-x',
   // Einstellungen
   'palette', 'text-size', 'lock', 'logout', 'refresh'
 ];

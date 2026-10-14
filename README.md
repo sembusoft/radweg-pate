@@ -27,19 +27,24 @@ PROJEKTANWEISUNGEN.md Regeln des Projekts (mobile first, Sicherheit, Arbeitsweis
 .github/workflows/    test.yml (bei jedem Push), deploy.yml (nur von Hand)
 ```
 
-## Lokal testen
+## Lokal testen (Docker Desktop)
 
-Voraussetzung: PHP ≥ 8.1 (mit gd, fileinfo, mbstring) und Node ≥ 20.
+Apache + PHP 8.3 wie bei all-inkl, `.htaccess` aktiv. Bedienung in PowerShell:
 
 ```powershell
-Copy-Item public\config.example.php public\config.php   # Token und APP_DATA_DIR anpassen
-node scripts\check.mjs
-php -S 127.0.0.1:8080 -t public
-# zweites Fenster, mit dem Token aus config.php und einem LEEREN Datenordner:
-$env:INSTALL_TOKEN="..."; $env:DATA_DIR="C:\Dev\radweg-test-data"; node scripts\smoke-test.mjs
+.\rp.ps1 start    # http://localhost:8090 – beim ersten Mal wird public\config.php angelegt (Code wird angezeigt)
+.\rp.ps1 test     # check.mjs + Rauchtest gegen eine Wegwerf-Instanz, inkl. .htaccess-Sperren
+.\rp.ps1 logs     # Apache-/PHP-Protokoll
+.\rp.ps1 reset    # lokale Testdaten löschen → Einrichtung beginnt neu
+.\rp.ps1 stop
 ```
 
-Der Rauchtest richtet die App ein – also nur gegen einen frischen Datenordner laufen lassen.
+- Lokale Daten liegen in `public\radwegpate_private` (gitignored, wird nie deployt).
+- Der Test (`rp.ps1 test`) läuft in einer eigenen Instanz mit Datenordner im Arbeitsspeicher –
+  deine lokalen Testdaten bleiben unberührt.
+- Handy-Ansicht: Browser-Entwicklertools (F12) → Gerätesymbol → 390 px.
+- Am echten Handy im WLAN (`http://<PC-IP>:8090`) läuft die App, aber **ohne Service Worker**
+  (der braucht HTTPS oder localhost). Offline-Verhalten deshalb nur am PC oder produktiv prüfen.
 
 ## Neue Version
 

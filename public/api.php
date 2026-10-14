@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
-if (!is_file(__DIR__ . '/config.php')) {
+// RADWEGPATE_CONFIG: nur für die lokale Wegwerf-Testinstanz (docker-compose, Dienst "test"),
+// gesetzt per Apache-SetEnv. Produktiv nicht gesetzt → config.php neben dieser Datei.
+$configFile = (string)(getenv('RADWEGPATE_CONFIG') ?: __DIR__ . '/config.php');
+if (!is_file($configFile)) {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');
     echo '{"ok":false,"error":"config.php fehlt. Vorlage config.example.php kopieren und anpassen."}';
     exit;
 }
-require __DIR__ . '/config.php';
+require $configFile;
 require __DIR__ . '/version.php';
 
 header('X-Content-Type-Options: nosniff');

@@ -296,14 +296,14 @@ function setupEvents(){
    const start=e.target.closest('[data-tour-start]');if(start)startTour([start.dataset.tourStart]);
    const toggle=e.target.closest('[data-issue-toggle]');if(toggle){const [entryId,issueId]=toggle.dataset.issueToggle.split(':');changeIssueStatus(entryId,issueId,toggle.dataset.targetStatus);}
    const osmAll=e.target.closest('[data-show-selected-map]');if(osmAll){
-      $('#start-dialog').close();selectTab('map');
+      $('#start-dialog').close();selectTab('map');setMapActions(false);
       state.visibleRoutes=new Set(state.startTourIds);saveVisibleRoutes();renderMap();zoomMap();
       $('#pate-map').scrollIntoView({behavior:'smooth',block:'start'});
       toast('Ausgewählte Originalstrecken auf der OSM-Karte angezeigt.');
    }
    const osm=e.target.closest('[data-show-map-route]');if(osm){
       if($('#start-dialog').open)$('#start-dialog').close();
-      selectTab('map');
+      selectTab('map');setMapActions(false);
       const id=osm.dataset.showMapRoute;
       state.visibleRoutes=new Set([id]);saveVisibleRoutes();renderMap();zoomMap(id);
       $('#pate-map').scrollIntoView({behavior:'smooth',block:'start'});
@@ -382,7 +382,8 @@ async function loadMap(){
 function initMap(){
  if(state.leafletMap)return;
  if(!window.L){$('#map-placeholder').hidden=false;$('#map-placeholder').textContent='Kartenbibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.';return;}
- state.leafletMap=L.map('pate-map',{scrollWheelZoom:false,zoomControl:true}).setView(DEFAULT_CENTER,12);
+ state.leafletMap=L.map('pate-map',{scrollWheelZoom:false,zoomControl:false}).setView(DEFAULT_CENTER,12);
+ L.control.zoom({position:'bottomleft'}).addTo(state.leafletMap); // oben liegt die Auswahl-Leiste
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',maxZoom:19}).addTo(state.leafletMap);
 }
 function redrawMap(){
@@ -459,11 +460,15 @@ function renderSelectionSummary(){
  const n=ids.length;
  const total=ids.reduce((sum,id)=>sum+routeLineKm(id),0);
  const label=$('#selection-count');label.textContent=n===1?'1 Tour':`${n} Touren`;
- $('#selection-summary').textContent=n?`${ids.map(id=>`${id} · ${routeById(id)?.name||''}`).join(' → ')}\n${total.toFixed(2).replace('.',',')} km nach KML`:'Noch keine Tour ausgewählt.';
+ $('#selection-summary').textContent=n?`${ids.map(id=>`${id} · ${routeById(id)?.name||''}`).join(' → ')}\n${total.toFixed(2).replace('.',',')} km nach KML`:'Noch keine Tour ausgewählt – unten in der Liste anwählen.';
  const check=n>1?comboCheck(ids):{ok:n===1,message:''};
+ // Über der Karte steht nur, was die Auswahl verhindert (keine lückenlose GPX-Kombination).
  const warning=$('#selection-warning');
- warning.textContent=n>1?check.message:n===1?'Eine Tour – direkt als GPX exportieren.':'Wähle eine oder mehrere Touren aus der Liste oben.';
- warning.classList.toggle('error-note',n>1&&!check.ok);
+ warning.textContent=n>1&&!check.ok?check.message:'';
+ warning.hidden=!(n>1&&!check.ok);
+ updateSelectionToggle();
+ $('#map-fab').hidden=n===0;
+ if(n===0)setMapActions(false);
  const link=$('#selection-gpx');link.hidden=!check.ok;
  if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Komoot':' Kombination als GPX für Komoot');}
  else link.removeAttribute('href');
@@ -583,15 +588,40 @@ async function saveMapAssignments(){
  try{await api('mapAssign','POST',{assignments});await loadMap();zoomMap();toast('Ebenen zugeordnet.');}
  catch(e){toast(e.message,true);}
 }
+function routesWithLines(){return state.routes.filter(r=>routeLines(r.id).length).map(r=>r.id);}
+function updateSelectionToggle(){
+ const all=routesWithLines(),btn=$('#selection-toggle');
+ const allOn=all.length>0&&all.every(id=>state.visibleRoutes?.has(id));
+ btn.innerHTML=allOn?ic('square-x')+' Alle abwählen':ic('square-check')+' Alle anwählen';
+ btn.disabled=all.length===0;
+}
+// Aktionen zur Auswahl: die Karte gleitet nach rechts hinaus, die Aktionen kommen von links.
+function setMapActions(open){
+ const stage=$('#map-stage'),fab=$('#map-fab');
+ if(!stage)return;
+ stage.classList.toggle('show-actions',open);
+ $('#selection-actions').inert=!open;
+ $('.map-pane').inert=open;
+ fab.setAttribute('aria-expanded',String(open));
+ fab.innerHTML=ic(open?'map':'list-check');
+ fab.setAttribute('aria-label',open?'Zurück zur Karte':'Aktionen zur Auswahl zeigen');
+ fab.title=open?'Zurück zur Karte':'Aktionen zur Auswahl';
+ if(open)$('#selection-actions').scrollTop=0;
+}
+// Höhe der klebenden Kopfleiste als CSS-Variable – die Karte bleibt direkt darunter stehen.
+function trackTopbarHeight(){
+ const bar=$('.topbar');if(!bar||!window.ResizeObserver)return;
+ new ResizeObserver(()=>document.documentElement.style.setProperty('--topbar-h',bar.offsetHeight+'px')).observe(bar);
+}
 function mapEvents(){
- $('#selection-all').addEventListener('click',()=>{
-   state.visibleRoutes=new Set(state.routes.filter(r=>routeLines(r.id).length).map(r=>r.id));
-   saveVisibleRoutes();renderMap();zoomMap();
+ trackTopbarHeight();
+ $('#selection-toggle').addEventListener('click',()=>{
+   const all=routesWithLines();
+   state.visibleRoutes=all.every(id=>state.visibleRoutes.has(id))?new Set():new Set(all);
+   saveVisibleRoutes();renderMap();if(state.visibleRoutes.size)zoomMap();
  });
- $('#selection-none').addEventListener('click',()=>{
-   state.visibleRoutes=new Set();saveVisibleRoutes();renderMap();
- });
- $('#selection-zoom').addEventListener('click',()=>zoomMap());
+ $('#map-fab').addEventListener('click',()=>setMapActions(!$('#map-stage').classList.contains('show-actions')));
+ $('#selection-zoom').addEventListener('click',()=>{setMapActions(false);zoomMap();});
  $('#selection-start').addEventListener('click',()=>startTour(selectedMapTours()));
  $('#start-diary').addEventListener('click',()=>{const ids=state.startTourIds;$('#start-dialog').close();openEntry(ids[0]||'01','',ids);});
  $('#selection-diary').addEventListener('click',()=>{

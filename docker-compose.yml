@@ -1,0 +1,52 @@
+# Lokale Testumgebung. Bedienung über .\rp.ps1 (start, stop, test, logs, reset).
+name: radwegpate
+
+x-php: &php
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: radwegpate-php:8.3
+
+services:
+  # Deine lokale App: http://localhost:8090 – Daten in public/radwegpate_private (gitignored),
+  # Konfiguration in public/config.php (legt rp.ps1 beim ersten Start an).
+  app:
+    <<: *php
+    ports:
+      - "8090:80"
+    volumes:
+      - ./public:/var/www/html
+
+  # Wegwerf-Instanz für den Rauchtest (nur mit --profile test).
+  test:
+    <<: *php
+    profiles: ["test"]
+    entrypoint: ["/usr/local/bin/test-entrypoint.sh"]
+    environment:
+      INSTALL_TOKEN: rauchtest-lokal-0123456789abcdef
+    # nicht :ro – Docker muss den Einhängepunkt radwegpate_private anlegen können.
+    # Geschrieben wird nur in den tmpfs; deine lokalen Daten sieht diese Instanz nicht.
+    volumes:
+      - ./public:/var/www/html
+    tmpfs:
+      - /var/www/html/radwegpate_private:mode=1777
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://localhost/api.php?action=status') ? 0 : 1);"]
+      interval: 2s
+      retries: 15
+
+  # Führt check.mjs und den Rauchtest gegen "test" aus.
+  runner:
+    image: node:22-alpine
+    profiles: ["test"]
+    working_dir: /repo
+    volumes:
+      - ./:/repo:ro
+    environment:
+      BASE_URL: http://test
+      INSTALL_TOKEN: rauchtest-lokal-0123456789abcdef
+      CHECK_HTACCESS: "1"
+    depends_on:
+      test:
+        condition: service_healthy
+    command: ["sh", "-c", "node scripts/check.mjs && node scripts/smoke-test.mjs"]

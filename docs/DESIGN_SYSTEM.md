@@ -1,6 +1,6 @@
 # Radwegpate — Design-System
 
-**Stand:** 14.10.2026 · Version 3.6.0
+**Stand:** 14.10.2026 · Version 3.7.0
 **Gilt für:** `public/assets/style.css`, `public/index.php`, `public/assets/app.js`
 **Vorbild:** FightReg (`DESIGN_SYSTEM.md`, Kapitel 4 und 16) — gleiche Begriffe, kleiner zugeschnitten.
 
@@ -155,6 +155,17 @@ Gesperrte Knöpfe: `disabled` + `opacity: .55`; der **Grund** steht als Text dan
   KML-Ebene klein, darunter die Zuordnung), *KML importieren* (mit der My-Maps-Originalkarte zum
   Vergleich), *Datensicherung*.
 - **Plus-Taste** in der Mitte: neue Streckenprüfung (gleicher Weg wie „+ Eintrag“ im Tagebuch).
+- **Karten-Ansicht** (seit 3.7.0):
+  - Kopf: *Alle zeigen* (Zoom) und *Alle anwählen / Alle abwählen* (ein Umschalter, Text wechselt).
+  - `.map-stage` scrollt mit, bis sie unter der Kopfleiste steht, und **klebt** dort
+    (`position: sticky; top: var(--topbar-h)`, die Höhe misst `trackTopbarHeight()`). Darunter scrollt
+    nur die Tourliste. Kartenhöhe `clamp(240px, 42dvh, 420px)`.
+  - Die **Auswahl-Leiste** (`.map-overlay`) liegt oben auf der Karte: Touren, Kilometer und — nur
+    wenn nötig — warum keine GPX-Kombination möglich ist. Zoom-Knöpfe deshalb unten links.
+  - Sobald eine Tour gewählt ist, erscheint der **runde Knopf** (`.map-fab`, 56 px) unten rechts.
+    Er schiebt die Karte nach rechts hinaus und holt die *Aktionen zur Auswahl* herein (GPX, Tour
+    starten, Kontrollfahrt, Navigation). Offen sitzt er oben rechts (48 px) und holt die Karte zurück;
+    der jeweils verdeckte Teil ist `inert`. *Auf Karte zeigen* schließt die Aktionen.
 - **Dialoge** (`<dialog class="modal">`) sind unter 560 px ein **Blatt von unten**, höchstens 94 %
   der Höhe; der Fuß (`.dialog-actions`) klebt unten, damit *Speichern* nie weggescrollt ist.
 - **Toast** sitzt über der Tab-Leiste.
