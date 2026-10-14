@@ -39,8 +39,11 @@ function storage(): string {
     }
     if (!is_writable($dir)) fail('APP_DATA_DIR ist nicht beschreibbar.', 500);
     // Zweite Sicherung, falls der Ordner doch unter einer (anderen) Domain im Web liegt.
+    // Manche Hoster (all-inkl) verbieten PHP das Schreiben von .htaccess-Dateien.
+    // Dann legt der Deploy sie per SSH an, und public/.htaccess sperrt den Ordner ohnehin.
     if (!is_file($dir.'/.htaccess') && @file_put_contents($dir.'/.htaccess', "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n    Deny from all\n</IfModule>\n")===false) {
-        fail('Schutzdatei im Datenordner konnte nicht angelegt werden.', 500);
+        static $logged=false;
+        if (!$logged) { error_log('Radwegpate: .htaccess im Datenordner nicht anlegbar ('.$dir.') – Schutz über public/.htaccess.'); $logged=true; }
     }
     return $dir;
 }

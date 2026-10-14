@@ -138,6 +138,25 @@ jobs:
           fi
           echo -n 'PHP auf dem Server: '; ssh deploy "php -r 'echo PHP_VERSION;'" || true; echo
 
+      # Der Datenordner liegt im Webroot. Seine eigene .htaccess legt der Deploy
+      # per SSH an: all-inkl erlaubt PHP nicht, .htaccess-Dateien zu schreiben.
+      # Der Ordner selbst wird nie übertragen oder gelöscht (.deployignore).
+      - name: Datenordner vorbereiten
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          DATA="${{ vars.REMOTE_PATH }}/radwegpate_private"
+          ssh deploy "mkdir -p '$DATA'"
+          ssh deploy "test -f '$DATA/.htaccess' || printf '%s\n' '<IfModule mod_authz_core.c>' '    Require all denied' '</IfModule>' '<IfModule !mod_authz_core.c>' '    Deny from all' '</IfModule>' > '$DATA/.htaccess'"
+          {
+            echo "### Datenordner"
+            echo '```'
+            ssh deploy "ls -la '$DATA'" || true
+            echo '```'
+            echo -n "PHP-Sicht: "
+            ssh deploy "cd '${{ vars.REMOTE_PATH }}' && php -r 'require \"config.php\"; echo APP_DATA_DIR, is_writable(APP_DATA_DIR) ? \" – schreibbar\" : \" – NICHT schreibbar\";'" || echo "config.php nicht lesbar"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Immer zuerst zeigen, was passieren würde. --checksum vergleicht den Inhalt:
       # Git kennt keine Zeitstempel, ohne -c hielte rsync jede Datei für geändert.
       - name: Dateiabgleich – Vorschau
