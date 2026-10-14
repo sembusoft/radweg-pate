@@ -1,6 +1,6 @@
 # Radwegpate — Design-System
 
-**Stand:** 14.10.2026 · Version 3.7.0
+**Stand:** 14.10.2026 · Version 3.8.0
 **Gilt für:** `public/assets/style.css`, `public/index.php`, `public/assets/app.js`
 **Vorbild:** FightReg (`DESIGN_SYSTEM.md`, Kapitel 4 und 16) — gleiche Begriffe, kleiner zugeschnitten.
 
@@ -166,6 +166,22 @@ Gesperrte Knöpfe: `disabled` + `opacity: .55`; der **Grund** steht als Text dan
     Er schiebt die Karte nach rechts hinaus und holt die *Aktionen zur Auswahl* herein (GPX, Tour
     starten, Kontrollfahrt, Navigation). Offen sitzt er oben rechts (48 px) und holt die Karte zurück;
     der jeweils verdeckte Teil ist `inert`. *Auf Karte zeigen* schließt die Aktionen.
+- **Laufende Kontrollfahrt** (`#trip-view`, seit 3.8.0) – eigene Seite, kein Tab:
+  - Einstieg: *Tour starten* (Tourkarte, Karten-Aktionen) legt die Fahrt sofort an (Datum, Startzeit
+    = jetzt). (+) und *Fahrt eintragen* öffnen erst das Blatt *Fahrt beginnen* (Touren, Datum,
+    Startzeit). Es läuft höchstens **eine** Fahrt; ein zweiter Start führt zur laufenden.
+  - Kopf: Touren, Datum und Start (änderbar, speichert sofort). *Navigation & GPX* aufklappbar.
+  - *Auf dieser Fahrt erfasst*: Mängel dieser Fahrt, neueste Uhrzeit zuerst, Stift zum Bearbeiten.
+    *Noch offene Mängel dieser Touren*: ältere offene Mängel mit *Erledigt*.
+  - Untere Leiste (über der Tab-Leiste): *Fahrt beenden* · *Mangel erfassen*. Während der Fahrt
+    öffnet auch (+) das Mangel-Blatt.
+  - **Mangel-Blatt** (`#issue-dialog`): Art, **Uhrzeit (vorbelegt: jetzt)**, Status, Ort,
+    Beschreibung, **GPS wird beim Öffnen automatisch erfasst**, Fotos. *Speichern* legt den Mangel
+    sofort ab (`issueSave`) – das Blatt schließt, die Seite bleibt.
+  - **Fahrt beenden** (`#trip-finish-dialog`): Endzeit (jetzt), Notiz, allgemeine Fotos. Ohne
+    Erfasstes wird *Verwerfen* angeboten.
+  - Läuft eine Fahrt und man ist woanders, steht unter den Kennzahlen der Balken
+    *Kontrollfahrt läuft seit … · Fortsetzen*.
 - **Dialoge** (`<dialog class="modal">`) sind unter 560 px ein **Blatt von unten**, höchstens 94 %
   der Höhe; der Fuß (`.dialog-actions`) klebt unten, damit *Speichern* nie weggescrollt ist.
 - **Toast** sitzt über der Tab-Leiste.

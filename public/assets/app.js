@@ -41,7 +41,7 @@ function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
 async function loadData(){const data=await api('bootstrap');state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
-function selectTab(tab){state.tab=tab;state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
+function selectTab(tab){state.tab=tab;setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
 function entryIssues(e){return Array.isArray(e.issues)?e.issues:((e.status==='mangel'||e.status==='hinweis'||e.issueKind||e.place)?[{id:'i_'+e.id,tourId:e.tourId,kind:ISSUE_KINDS.includes(e.issueKind)?e.issueKind:'Sonstiges',place:e.place||'',description:'',status:'offen',coords:e.coords||null,photos:[]}]:[]);}
 function counts(tourId){return state.entries.filter(e=>entryRoutes(e).includes(tourId));}
@@ -86,6 +86,8 @@ function render(){
  $('#entry-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tourIds" value="${esc(r.id)}"><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
  if(state.mapData)renderMapSettings();
  renderDiary();if(state.mapData)renderMap();
+ if(state.tab==='trip')renderTrip();
+ updateTripBanner();
 }
 function renderDiary(){
  const tour=$('#filter-tour').value,status=$('#filter-status').value;
@@ -106,38 +108,154 @@ function renderDiary(){
      const pics=(issue.photos||[]).length?`<div class="photos-row">${issue.photos.map(photo=>`<a href="api.php?action=photo&id=${photo.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${photo.id}&thumb=1" width="86" height="72" loading="lazy" alt="Mängelfoto ${esc(photo.name)}"></a>`).join('')}</div>`:'';
      const isDone=!isPending(issue);
      const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?ic('arrow-back-up')+' Wieder öffnen':ic('check')+' Als erledigt markieren'}</button>`;
-     return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
+     return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${issue.time?esc(issue.time)+' · ':''}${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
    }).join('')}</div>`:'';
-   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div><span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}<div class="entry-bottom"><button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div></article>`;
+   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}<div class="entry-bottom">${e.running?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div></article>`;
  }).join(''):'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>';
 }
-function renderStartIssues(){
- const ids=state.startTourIds||[];
- $('#start-tour-label').textContent=ids.map(id=>`${id} · ${routeById(id)?.name||'Tour'}`).join(' / ');
- const open=pendingIssues(ids);
- $('#start-issue-count').textContent=`${open.length} offen`;
- const wrap=$('#start-issue-list');
- const nav=$('#start-navigation');
+// ── Laufende Kontrollfahrt ─────────────────────────────────────────────
+// Eine Fahrt wird beim Start angelegt (running=true); Mängel werden einzeln gespeichert
+// (issueSave), die Seite bleibt offen. "Fahrt beenden" setzt Endzeit und Notiz.
+const nowTime=()=>{const d=new Date();return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
+const mapsLink=c=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat+','+c.lon)}`;
+function runningTrip(){return state.entries.find(e=>e.running);}
+function tripEntry(){return state.entries.find(e=>e.id===state.trip);}
+function tourLabel(ids){return ids.map(id=>`${id} · ${routeById(id)?.name||'Tour'}`).join(' / ');}
+function timeSpan(e){return e.startTime?(e.endTime?`${e.startTime}–${e.endTime}`:`ab ${e.startTime}`):'';}
+function tripNavigationHtml(ids){
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   nav.innerHTML=`<strong>Navigation</strong><div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Originalstrecke</button><a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
- }else {
-   const check=comboCheck(ids);
-   nav.innerHTML=`<strong>Navigation der Kombination</strong><div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
+   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }
- if(!open.length){wrap.innerHTML='<div class="no-pending">'+ic('circle-check')+' Für die ausgewählten Touren sind aktuell keine offenen Mängel eingetragen.</div>';return;}
- wrap.innerHTML=open.map(({entry,issue})=>{
-    const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(issue.coords.lat+','+issue.coords.lon)}">${ic('map-pin')} Standort öffnen</a>`:'<span class="smallnote">Kein GPS-Punkt erfasst</span>';
-    const pics=(issue.photos||[]).slice(0,5).map(photo=>`<a href="api.php?action=photo&id=${esc(photo.id)}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${esc(photo.id)}&thumb=1" loading="lazy" alt="Foto ${esc(photo.name)}" width="96" height="76"></a>`).join('');
-    return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">${ic('check')} Erledigt</button></div></article>`;
- }).join('');
+ const check=comboCheck(ids);
+ return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
 }
-function startTour(ids){
+function photoThumbs(photos,max=5){return (photos||[]).slice(0,max).map(p=>`<a href="api.php?action=photo&id=${esc(p.id)}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${esc(p.id)}&thumb=1" loading="lazy" alt="Foto ${esc(p.name)}" width="96" height="76"></a>`).join('');}
+function openIssueCard(entry,issue){
+ const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="${mapsLink(issue.coords)}">${ic('map-pin')} Standort</a>`:'<span class="smallnote">Kein GPS-Punkt</span>';
+ const pics=photoThumbs(issue.photos);
+ return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}${issue.time?' · '+esc(issue.time)+' Uhr':''}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">${ic('check')} Erledigt</button></div></article>`;
+}
+function tripIssueCard(entry,issue){
+ const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="${mapsLink(issue.coords)}">${ic('map-pin')} Standort</a>`:'<span class="smallnote">Kein GPS-Punkt</span>';
+ const pics=photoThumbs(issue.photos);
+ return `<article class="pending-card trip-issue"><div class="pending-top"><strong>${issue.time?`<span class="issue-time">${ic('clock')} ${esc(issue.time)}</span> `:''}${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><button type="button" class="icon-button small" data-trip-issue-edit="${esc(issue.id)}" aria-label="Mangel bearbeiten" title="Mangel bearbeiten">${ic('pencil')}</button></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div></article>`;
+}
+function renderTrip(){
+ const e=tripEntry();
+ if(!e){if(state.tab==='trip')selectTab('diary');return;}
+ const ids=entryRoutes(e);
+ $('#trip-state').textContent=e.running?'Kontrollfahrt läuft':'Kontrollfahrt abgeschlossen';
+ $('#trip-title').textContent=tourLabel(ids);
+ if(document.activeElement!==$('#trip-date'))$('#trip-date').value=e.date||'';
+ if(document.activeElement!==$('#trip-start'))$('#trip-start').value=e.startTime||'';
+ $('#trip-navigation').innerHTML=tripNavigationHtml(ids);
+ const own=entryIssues(e).slice().sort((a,b)=>(b.time||'').localeCompare(a.time||''));
+ $('#trip-new-count').textContent=own.length;
+ $('#trip-issue-list').innerHTML=own.length?own.map(i=>tripIssueCard(e,i)).join(''):'<p class="smallnote">Noch nichts erfasst. „Mangel erfassen“ unten legt den ersten an – Uhrzeit und Standort werden dabei gleich übernommen.</p>';
+ const open=pendingIssues(ids).filter(x=>x.entry.id!==e.id);
+ $('#trip-open-count').textContent=`${open.length} offen`;
+ $('#trip-open-list').innerHTML=open.length?open.map(({entry,issue})=>openIssueCard(entry,issue)).join(''):'<div class="no-pending">'+ic('circle-check')+' Für diese Touren sind keine älteren Mängel offen.</div>';
+ $('#trip-finish').hidden=!e.running;$('#trip-add-issue').hidden=!e.running;
+}
+function updateTripBanner(){
+ const run=runningTrip(),b=$('#trip-banner');
+ b.hidden=!run||(state.tab==='trip'&&state.trip===run.id);
+ if(run)$('#trip-banner-text').textContent=`Kontrollfahrt läuft seit ${run.startTime||'?'} · ${entryRoutes(run).join(', ')}`;
+}
+function openTrip(id){state.trip=id;renderTrip();selectTab('trip');updateTripBanner();}
+// Einstieg über (+), "Fahrt eintragen", Tagebuch: erst Touren/Datum/Startzeit wählen
+function openTripStart(ids=[]){
+ const run=runningTrip();
+ if(run){openTrip(run.id);toast('Es läuft noch eine Kontrollfahrt – erst beenden, dann eine neue beginnen.',true);return;}
+ $('#trip-start-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tripTours" value="${esc(r.id)}" ${ids.includes(r.id)?'checked':''}><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
+ $('#trip-start-date').value=todayLocal();$('#trip-start-time').value=nowTime();
+ $('#trip-start-dialog').showModal();
+}
+async function startTrip(ids,date=todayLocal(),time=nowTime()){
+ const run=runningTrip();
+ if(run){openTrip(run.id);toast('Es läuft noch eine Kontrollfahrt – erst beenden, dann eine neue beginnen.',true);return;}
  const picked=[...new Set(ids)].filter(id=>state.routes.some(r=>r.id===id));
  if(!picked.length){toast('Bitte mindestens eine Tour auswählen.',true);return;}
- state.startTourIds=picked;
- renderStartIssues();
- $('#start-dialog').showModal();
+ try{const r=await api('tripStart','POST',{tourIds:picked,date,startTime:time});await refresh();openTrip(r.entry.id);toast(`Kontrollfahrt gestartet · ${time} Uhr`);}
+ catch(err){toast(err.message,true);}
+}
+// "Tour starten" (Tourkarte, Karte): sofort beginnen
+function startTour(ids){startTrip(ids);}
+// Mangel-Blatt: neu (Uhrzeit = jetzt, Standort sofort) oder bearbeiten
+let issueCoords=null;
+function issueGpsLabel(){$('#issue-gps-label').textContent=issueCoords?`GPS: ${issueCoords.lat.toFixed(6)}, ${issueCoords.lon.toFixed(6)}`:'GPS: nicht erfasst';$('#issue-gps-clear').hidden=!issueCoords;}
+function captureIssueGps(){
+ if(!navigator.geolocation){$('#issue-gps-label').textContent='GPS auf diesem Gerät nicht verfügbar';return;}
+ $('#issue-gps-label').textContent='Standort wird erfasst …';
+ navigator.geolocation.getCurrentPosition(pos=>{issueCoords={lat:pos.coords.latitude,lon:pos.coords.longitude};issueGpsLabel();},()=>{issueGpsLabel();$('#issue-gps-label').textContent+=' (Standortfreigabe fehlt?)';},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+}
+function renderIssuePhotos(issue){$('#issue-existing-photos').innerHTML=(issue?.photos||[]).map(p=>`<div class="photo-tile"><a href="api.php?action=photo&id=${p.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${p.id}&thumb=1" alt="${esc(p.name)}"></a><button type="button" title="Foto entfernen" aria-label="Foto entfernen" data-photo-delete="${p.id}">×</button></div>`).join('');}
+function openIssueSheet(issueId=''){
+ const e=tripEntry();if(!e)return;
+ const ids=entryRoutes(e),issue=issueId?entryIssues(e).find(i=>i.id===issueId):null;
+ $('#issue-id').value=issue?.id||newIssueId();
+ $('#issue-eyebrow').textContent=issue?'Mangel bearbeiten':'Neuer Mangel';
+ $('#issue-heading').textContent=issue?`${issue.tourId} · ${issue.kind}`:'Mangel erfassen';
+ $('#issue-tour').innerHTML=ids.map(id=>`<option value="${esc(id)}">${esc(id)} · ${esc(routeById(id)?.name||'')}</option>`).join('');
+ $('#issue-tour').value=issue?.tourId||ids[0];$('#issue-tour-wrap').hidden=ids.length===1&&!issue;
+ $('#issue-kind').innerHTML=ISSUE_KINDS.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');$('#issue-kind').value=issue?.kind||'Sonstiges';
+ $('#issue-status').innerHTML=Object.entries(ISSUE_STATES).map(([k,l])=>`<option value="${k}">${l}</option>`).join('');$('#issue-status').value=issue?.status||'offen';
+ $('#issue-time').value=issue?.time||nowTime();
+ $('#issue-place').value=issue?.place||'';$('#issue-description').value=issue?.description||'';$('#issue-photos').value='';
+ issueCoords=issue?.coords||null;issueGpsLabel();renderIssuePhotos(issue);
+ $('#issue-delete').hidden=!issue;
+ $('#issue-dialog').showModal();
+ if(!issue)captureIssueGps();
+}
+async function saveIssue(ev){
+ ev.preventDefault();
+ const e=tripEntry();if(!e)return;
+ const id=$('#issue-id').value,existing=entryIssues(e).find(i=>i.id===id),files=[...$('#issue-photos').files];
+ if((existing?.photos?.length||0)+files.length>5){toast('Maximal 5 Fotos je Mangel.',true);return;}
+ const issue={id,tourId:$('#issue-tour').value,kind:$('#issue-kind').value,status:$('#issue-status').value,time:$('#issue-time').value,place:$('#issue-place').value,description:$('#issue-description').value,coords:issueCoords};
+ const btn=$('#issue-save');btn.disabled=true;btn.innerHTML=ic('refresh')+' Speichere …';
+ try{
+   await api('issueSave','POST',{entryId:e.id,issue});
+   let failed=0;
+   for(const file of files){const resized=await compressPhoto(file);const fd=new FormData();fd.set('entryId',e.id);fd.set('issueId',id);fd.set('file',resized,resized.name);try{await api('upload','POST',fd);}catch(err){failed++;}}
+   $('#issue-dialog').close();await refresh();
+   toast(failed?`Mangel gespeichert, ${failed} Foto(s) fehlgeschlagen.`:'Mangel gespeichert.',!!failed);
+ }catch(err){toast(err.message,true);}
+ finally{btn.disabled=false;btn.innerHTML=ic('check')+' Speichern';}
+}
+async function deleteIssue(){
+ const e=tripEntry(),id=$('#issue-id').value;
+ if(!e||!window.confirm('Diesen Mangel samt Fotos löschen?'))return;
+ try{await api('issueDelete','POST',{entryId:e.id,issueId:id});$('#issue-dialog').close();await refresh();toast('Mangel gelöscht.');}catch(err){toast(err.message,true);}
+}
+function openTripFinish(){
+ const e=tripEntry();if(!e)return;
+ const n=entryIssues(e).length;
+ $('#trip-finish-summary').textContent=`${tourLabel(entryRoutes(e))} · ${textDate(e.date)} ab ${e.startTime||'?'} · ${n} ${n===1?'Mangel':'Mängel'} erfasst`;
+ $('#trip-end-time').value=nowTime();$('#trip-notes').value=e.notes||'';$('#trip-photos').value='';
+ $('#trip-discard').hidden=n>0||(e.photos||[]).length>0;
+ $('#trip-finish-dialog').showModal();
+}
+async function finishTrip(ev){
+ ev.preventDefault();
+ const e=tripEntry();if(!e)return;
+ const files=[...$('#trip-photos').files];
+ if((e.photos?.length||0)+files.length>8){toast('Maximal 8 allgemeine Fotos je Kontrollfahrt.',true);return;}
+ const btn=$('#trip-finish-save');btn.disabled=true;
+ try{
+   await api('tripUpdate','POST',{entryId:e.id,endTime:$('#trip-end-time').value,notes:$('#trip-notes').value,running:false});
+   for(const file of files){const resized=await compressPhoto(file);const fd=new FormData();fd.set('entryId',e.id);fd.set('file',resized,resized.name);try{await api('upload','POST',fd);}catch(err){}}
+   $('#trip-finish-dialog').close();await refresh();selectTab('diary');toast('Kontrollfahrt abgeschlossen.');
+ }catch(err){toast(err.message,true);}finally{btn.disabled=false;}
+}
+async function discardTrip(){
+ const e=tripEntry();if(!e||!window.confirm('Diese Fahrt verwerfen? Es wurde noch nichts erfasst.'))return;
+ try{await api('deleteEntry','POST',{id:e.id});$('#trip-finish-dialog').close();state.trip=null;await refresh();selectTab('map');toast('Fahrt verworfen.');}catch(err){toast(err.message,true);}
+}
+async function saveTripMeta(field,value){
+ const e=tripEntry();if(!e||!value)return;
+ try{await api('tripUpdate','POST',{entryId:e.id,[field]:value});await refresh();}catch(err){toast(err.message,true);renderTrip();}
 }
 async function changeIssueStatus(entryId,issueId,status){
  if(!['offen','erledigt'].includes(status))return;
@@ -148,7 +266,7 @@ async function changeIssueStatus(entryId,issueId,status){
  try {
    await api('issueStatus','POST',{entryId,issueId,status});
    await refresh();
-   if($('#start-dialog').open)renderStartIssues();
+   if(state.tab==='trip')renderTrip();
    toast(status==='erledigt'?'Mangel als erledigt dokumentiert.':'Mangel wieder geöffnet.');
  } catch(error){toast(error.message,true);}
 }
@@ -169,6 +287,7 @@ function makeIssueRow(issue={}){
  if(issue.coords){el.dataset.lat=String(issue.coords.lat);el.dataset.lon=String(issue.coords.lon);}
  el.innerHTML=`<div class="issue-row-title"><strong>Einzelmangel</strong><button type="button" class="text-btn" data-remove-issue>${ic('trash')} Entfernen</button></div>
   <div class="issue-fields"><label>Tour<select data-issue="tourId" required>${opt}</select></label>
+  <label>Uhrzeit<input type="time" data-issue="time" value="${esc(issue.time||'')}"></label>
   <label>Art<select data-issue="kind">${ISSUE_KINDS.map(k=>`<option value="${esc(k)}" ${k===(issue.kind||'Sonstiges')?'selected':''}>${esc(k)}</option>`).join('')}</select></label>
   <label>Status<select data-issue="status">${Object.entries(ISSUE_STATES).map(([k,label])=>`<option value="${k}" ${k===(issue.status||'offen')?'selected':''}>${label}</option>`).join('')}</select></label>
   <label class="issue-wide">Ort / Abschnitt<input data-issue="place" maxlength="180" value="${esc(issue.place||'')}" placeholder="z. B. Brücke, Straßenname, Kreuzung"></label>
@@ -184,7 +303,7 @@ function openEntry(tour='01',editId='',prefilled=null){
  if(editId&&!e){toast('Eintrag nicht gefunden.',true);return;}
  $('#entry-form').reset();state.editing=e?.id||null;state.coords=e?.coords||null;
  $('#entry-heading').textContent=e?'Streckenprüfung bearbeiten':'Neue Streckenprüfung';
- $('#entry-id').value=e?.id||'';$('#entry-date').value=e?.date||todayLocal();
+ $('#entry-id').value=e?.id||'';$('#entry-date').value=e?.date||todayLocal();$('#entry-start').value=e?.startTime||'';$('#entry-end').value=e?.endTime||'';
  const ids=e?entryRoutes(e):(prefilled?.length?prefilled:[tour]);
  for(const box of $$('input[name="tourIds"]'))box.checked=ids.includes(box.value);
  $('#entry-notes').value=e?.notes||'';$('#entry-photos').value='';
@@ -210,12 +329,12 @@ async function compressPhoto(file){
 }
 async function saveEntry(event){event.preventDefault();const form=$('#entry-form'),fd=new FormData(form),files=[...$('#entry-photos').files];
  const tourIds=selectedEntryTours();if(!tourIds.length){toast('Bitte mindestens eine Tour auswählen.',true);return;}
- const rows=$$('.issue-row');const issues=rows.map(row=>({id:row.dataset.issueId,tourId:$('[data-issue="tourId"]',row).value,kind:$('[data-issue="kind"]',row).value,status:$('[data-issue="status"]',row).value,place:$('[data-issue="place"]',row).value,description:$('[data-issue="description"]',row).value,coords:issuePoint(row)}));
+ const rows=$$('.issue-row');const issues=rows.map(row=>({id:row.dataset.issueId,time:$('[data-issue="time"]',row).value||null,tourId:$('[data-issue="tourId"]',row).value,kind:$('[data-issue="kind"]',row).value,status:$('[data-issue="status"]',row).value,place:$('[data-issue="place"]',row).value,description:$('[data-issue="description"]',row).value,coords:issuePoint(row)}));
  const issueUploads=rows.flatMap(row=>[...$('[data-issue-photos]',row).files].map(file=>({issueId:row.dataset.issueId,file})));
  const existing=state.editing?state.entries.find(e=>e.id===state.editing):null;
  if((existing?.photos?.length||0)+files.length>8){toast('Maximal 8 allgemeine Fotos je Kontrollfahrt.',true);return;}
  for(const row of rows){const id=row.dataset.issueId;const old=entryIssues(existing||{}).find(i=>i.id===id);if((old?.photos?.length||0)+[...$('[data-issue-photos]',row).files].length>5){toast('Maximal 5 Fotos pro Mangel.',true);return;}}
- const data={id:fd.get('id')||'',tourIds,date:fd.get('date'),notes:fd.get('notes'),coords:state.coords,issues};
+ const data={id:fd.get('id')||'',tourIds,date:fd.get('date'),startTime:fd.get('startTime')||null,endTime:fd.get('endTime')||null,notes:fd.get('notes'),coords:state.coords,issues};
  const button=$('#save-entry');button.disabled=true;button.textContent='Speichere …';
  try{
    const saved=await api('entry','POST',data);let failed=[];
@@ -232,12 +351,12 @@ async function saveRoute(event){event.preventDefault();const id=$('#route-id').v
  catch(err){toast(err.message,true);}
 }
 function exportCsv(){
- const cols=['Prüfung-ID','Kontrollierte Touren','Datum','Fahrtnotiz','Fahrt-GPS Breitengrad','Fahrt-GPS Längengrad','Allgemeine Fotos','Mangel-ID','Mangel-Tour','Mangelart','Mangelort','Mangelbeschreibung','Bearbeitungsstatus','Mangel-GPS Breitengrad','Mangel-GPS Längengrad','Mängelfotos','Erledigt am'];
+ const cols=['Prüfung-ID','Kontrollierte Touren','Datum','Start','Ende','Fahrtnotiz','Fahrt-GPS Breitengrad','Fahrt-GPS Längengrad','Allgemeine Fotos','Mangel-ID','Mangel-Uhrzeit','Mangel-Tour','Mangelart','Mangelort','Mangelbeschreibung','Bearbeitungsstatus','Mangel-GPS Breitengrad','Mangel-GPS Längengrad','Mängelfotos','Erledigt am'];
  const rows=[];
- for(const e of state.entries){const prefix=[e.id,entryRoutes(e).join(', '),e.date,e.notes||'',e.coords?.lat??'',e.coords?.lon??'',(e.photos||[]).length];
+ for(const e of state.entries){const prefix=[e.id,entryRoutes(e).join(', '),e.date,e.startTime||'',e.endTime||'',e.notes||'',e.coords?.lat??'',e.coords?.lon??'',(e.photos||[]).length];
   const issues=entryIssues(e);
-  if(!issues.length)rows.push([...prefix,'','','','','','','','',0,'']);
-  for(const i of issues)rows.push([...prefix,i.id,i.tourId,i.kind,i.place,i.description,i.status,i.coords?.lat??'',i.coords?.lon??'',(i.photos||[]).length,i.completedAt||'']);
+  if(!issues.length)rows.push([...prefix,'','','','','','','','','',0,'']);
+  for(const i of issues)rows.push([...prefix,i.id,i.time||'',i.tourId,i.kind,i.place,i.description,i.status,i.coords?.lat??'',i.coords?.lon??'',(i.photos||[]).length,i.completedAt||'']);
  }
  function quote(v){let value=String(v??'');if(/^[=+@-]/.test(value)&&!/^[-]?\d+(\.\d+)?$/.test(value))value="'"+value;return '"'+value.replaceAll('"','""')+'"';}
  const csv='\uFEFF'+[cols,...rows].map(row=>row.map(quote).join(';')).join('\r\n');
@@ -276,9 +395,24 @@ function setupEvents(){
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
  $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
- $('#new-entry-diary').addEventListener('click',()=>openEntry());
+ $('#new-entry-diary').addEventListener('click',()=>openTripStart([]));
  // Plus in der Tab-Leiste: auf der Karte mit den gewählten Touren vorbelegt.
- $('#mobile-add').addEventListener('click',()=>{const ids=state.tab==='map'?selectedMapTours():[];ids.length?openEntry(ids[0],'',ids):openEntry();});
+ $('#mobile-add').addEventListener('click',()=>{
+   if(state.tab==='trip'&&tripEntry()?.running){openIssueSheet();return;} // während der Fahrt: Mangel erfassen
+   openTripStart(state.tab==='map'?selectedMapTours():[]);});
+ // Laufende Kontrollfahrt
+ $('#trip-banner').addEventListener('click',()=>{const r=runningTrip();if(r)openTrip(r.id);});
+ $('#trip-start-form').addEventListener('submit',ev=>{ev.preventDefault();const ids=$$('input[name="tripTours"]:checked').map(c=>c.value);if(!ids.length){toast('Bitte mindestens eine Tour auswählen.',true);return;}$('#trip-start-dialog').close();startTrip(ids,$('#trip-start-date').value,$('#trip-start-time').value);});
+ $('#trip-add-issue').addEventListener('click',()=>openIssueSheet());
+ $('#issue-form').addEventListener('submit',saveIssue);
+ $('#issue-delete').addEventListener('click',deleteIssue);
+ $('#issue-gps').addEventListener('click',captureIssueGps);
+ $('#issue-gps-clear').addEventListener('click',()=>{issueCoords=null;issueGpsLabel();});
+ $('#trip-finish').addEventListener('click',openTripFinish);
+ $('#trip-finish-form').addEventListener('submit',finishTrip);
+ $('#trip-discard').addEventListener('click',discardTrip);
+ $('#trip-date').addEventListener('change',ev=>saveTripMeta('date',ev.target.value));
+ $('#trip-start').addEventListener('change',ev=>saveTripMeta('startTime',ev.target.value));
  for(const k of $$('.kpi'))k.addEventListener('click',()=>{if(k.dataset.goto==='diary'){$('#filter-tour').value='';$('#filter-status').value=k.dataset.filter||'';renderDiary();}selectTab(k.dataset.goto);});
  setupAppearance();
  $('#add-issue').addEventListener('click',()=>{if(!selectedEntryTours().length){toast('Zuerst eine Tour auswählen.',true);return;}if($$('.issue-row').length>=25){toast('Maximal 25 Mängel.',true);return;}makeIssueRow();});
@@ -291,19 +425,21 @@ function setupEvents(){
  });
  document.addEventListener('click',e=>{
    const edit=e.target.closest('[data-route-edit]');if(edit)openRoute(edit.dataset.routeEdit);
-   const create=e.target.closest('[data-new-entry]');if(create)openEntry(create.dataset.newEntry);
+   const create=e.target.closest('[data-new-entry]');if(create)openTripStart([create.dataset.newEntry]);
+   const tripEdit=e.target.closest('[data-trip-issue-edit]');if(tripEdit)openIssueSheet(tripEdit.dataset.tripIssueEdit);
+   const resume=e.target.closest('[data-trip-open]');if(resume)openTrip(resume.dataset.tripOpen);
    const entryEdit=e.target.closest('[data-entry-edit]');if(entryEdit)openEntry('01',entryEdit.dataset.entryEdit);
    const del=e.target.closest('[data-entry-delete]');if(del)deleteEntry(del.dataset.entryDelete);
    const start=e.target.closest('[data-tour-start]');if(start)startTour([start.dataset.tourStart]);
    const toggle=e.target.closest('[data-issue-toggle]');if(toggle){const [entryId,issueId]=toggle.dataset.issueToggle.split(':');changeIssueStatus(entryId,issueId,toggle.dataset.targetStatus);}
    const osmAll=e.target.closest('[data-show-selected-map]');if(osmAll){
-      $('#start-dialog').close();selectTab('map');setMapActions(false);
-      state.visibleRoutes=new Set(state.startTourIds);saveVisibleRoutes();renderMap();zoomMap();
+      const tids=state.tab==='trip'&&tripEntry()?entryRoutes(tripEntry()):selectedMapTours();
+      selectTab('map');setMapActions(false);
+      state.visibleRoutes=new Set(tids);saveVisibleRoutes();renderMap();zoomMap();
       showMapStage();
       toast('Ausgewählte Originalstrecken auf der OSM-Karte angezeigt.');
    }
    const osm=e.target.closest('[data-show-map-route]');if(osm){
-      if($('#start-dialog').open)$('#start-dialog').close();
       selectTab('map');setMapActions(false);
       const id=osm.dataset.showMapRoute;
       state.visibleRoutes=new Set([id]);saveVisibleRoutes();renderMap();zoomMap(id);
@@ -330,7 +466,7 @@ function setupEvents(){
  for(const dialog of $$('.modal'))dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
 }
 async function deleteEntry(id){if(!window.confirm('Diesen Tagebucheintrag samt Fotos wirklich löschen?'))return;try{await api('deleteEntry','POST',{id});await refresh();toast('Eintrag gelöscht.');}catch(err){toast(err.message,true);}}
-async function deletePhoto(id){if(!window.confirm('Dieses Foto endgültig löschen?'))return;try{await api('deletePhoto','POST',{id});const node=$$('[data-photo-delete]').find(b=>b.dataset.photoDelete===id)?.closest('.photo-tile');node?.remove();await refresh();const e=state.entries.find(x=>x.id===state.editing);renderExistingPhotos(e);toast('Foto gelöscht.');}catch(err){toast(err.message,true);}}
+async function deletePhoto(id){if(!window.confirm('Dieses Foto endgültig löschen?'))return;try{await api('deletePhoto','POST',{id});const node=$$('[data-photo-delete]').find(b=>b.dataset.photoDelete===id)?.closest('.photo-tile');node?.remove();await refresh();const e=state.entries.find(x=>x.id===state.editing);renderExistingPhotos(e);if($('#issue-dialog').open)renderIssuePhotos(entryIssues(tripEntry()||{}).find(i=>i.id===$('#issue-id').value));toast('Foto gelöscht.');}catch(err){toast(err.message,true);}}
 // KML-Routenverwaltung – die Linien werden niemals automatisch neu berechnet.
 const MAP_COLORS={'01':'#1463b1','02':'#057ba4','03':'#9c5b26','04':'#1d7b51','05':'#6f55bb','06':'#bd7422','07':'#d94b89'};
 const DEFAULT_CENTER=[48.323,10.042]; // Nur initialer Kartenausschnitt Senden, keine Streckenkoordinaten.
@@ -636,7 +772,6 @@ function mapEvents(){
  setOverlay(storedPref('radwegpate-overlay','')==='open');
  $('#overlay-toggle').addEventListener('click',()=>{const open=$('#overlay-toggle').getAttribute('aria-expanded')!=='true';setOverlay(open);storePref('radwegpate-overlay',open?'open':'');});
  $('#selection-start').addEventListener('click',()=>startTour(selectedMapTours()));
- $('#start-diary').addEventListener('click',()=>{const ids=state.startTourIds;$('#start-dialog').close();openEntry(ids[0]||'01','',ids);});
  $('#kml-form').addEventListener('submit',sendKmlImport);
  $('#save-assignments').addEventListener('click',saveMapAssignments);
  $('#map-zoom').addEventListener('click',()=>zoomMap());

@@ -284,6 +284,40 @@ function valid_coords(mixed $raw): ?array {
     if (!is_array($raw) || !is_numeric($raw['lat']??null) || !is_numeric($raw['lon']??null) || abs((float)$raw['lat'])>90 || abs((float)$raw['lon'])>180) fail('GPS-Position ist ungültig.');
     return ['lat'=>(float)$raw['lat'],'lon'=>(float)$raw['lon']];
 }
+function valid_time(mixed $raw, bool $allowEmpty=true): ?string {
+    if ($raw===null || $raw==='') { if ($allowEmpty) return null; fail('Uhrzeit fehlt.'); }
+    if (!is_string($raw) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/',$raw)) fail('Uhrzeit ist ungültig (HH:MM).');
+    return $raw;
+}
+const ISSUE_KINDS=['Belag','Beschilderung','Hindernis','Sicherheit','Verschmutzung','Bewuchs','Sonstiges'];
+const ISSUE_STATES=['offen','gemeldet','bearbeitung','erledigt'];
+/** Prüft eine Mangelzeile. $previous: gespeicherte Fassung (Fotos, Erledigt-Zeit bleiben erhalten). */
+function clean_issue(mixed $issue, array $tourIds, ?array $previous=null): array {
+    if (!is_array($issue)) fail('Ungültige Mangelzeile.');
+    $issueId=(string)($issue['id']??'');
+    if (!preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangel-ID.');
+    $tour=(string)($issue['tourId']??'');
+    if (!in_array($tour,$tourIds,true)) fail('Mangel-Tour muss zu den geprüften Strecken gehören.');
+    $kind=(string)($issue['kind']??'');
+    $status=(string)($issue['status']??'offen');
+    if (!in_array($kind,ISSUE_KINDS,true) || !in_array($status,ISSUE_STATES,true)) fail('Ungültige Mangelart oder Bearbeitungsstatus.');
+    $wasDone=($previous['status']??'offen')==='erledigt';
+    return [
+        'id'=>$issueId,'tourId'=>$tour,'kind'=>$kind,
+        'time'=>valid_time($issue['time']??null),
+        'place'=>norm((string)($issue['place']??''),180),
+        'description'=>norm((string)($issue['description']??''),3000),
+        'status'=>$status,'coords'=>valid_coords($issue['coords']??null),
+        'photos'=>$previous['photos']??[],
+        'createdAt'=>$previous['createdAt']??gmdate('c'),
+        'completedAt'=>$status==='erledigt'?($wasDone?($previous['completedAt']??gmdate('c')):gmdate('c')):null
+    ];
+}
+function entry_status(array $issues): string { return count($issues)>0?'mangel':'gut'; }
+function find_entry_index(array $entries, string $id): int {
+    foreach ($entries as $i=>$e) if (($e['id']??'')===$id) return $i;
+    fail('Kontrollfahrt nicht gefunden.',404);
+}
 function photo_list(array $entry): array {
     $all=$entry['photos']??[];
     foreach (($entry['issues']??[]) as $issue) foreach (($issue['photos']??[]) as $p) $all[]=$p;
@@ -299,28 +333,16 @@ if ($action==='entry' && $method==='POST') {
     $rawIssues=$in['issues']??[];
     if (!is_array($rawIssues) || count($rawIssues)>25) fail('Maximal 25 Mängel pro Kontrollfahrt.');
     $issues=[];$seen=[];
-    $kinds=['Belag','Beschilderung','Hindernis','Sicherheit','Verschmutzung','Bewuchs','Sonstiges'];
-    $states=['offen','gemeldet','bearbeitung','erledigt'];
     foreach ($rawIssues as $issue) {
-        if (!is_array($issue)) fail('Ungültige Mangelzeile.');
-        $issueId=(string)($issue['id']??'');
-        if (!preg_match('/^i_[a-f0-9]{24}$/',$issueId) || isset($seen[$issueId])) fail('Ungültige oder doppelte Mangel-ID.');
-        $seen[$issueId]=true;
-        $issueTour=(string)($issue['tourId']??'');
-        if (!in_array($issueTour,$tourIds,true)) fail('Mangel-Tour muss zu den geprüften Strecken gehören.');
-        $kind=(string)($issue['kind']??'');
-        $status=(string)($issue['status']??'offen');
-        if (!in_array($kind,$kinds,true) || !in_array($status,$states,true)) fail('Ungültige Mangelart oder Bearbeitungsstatus.');
-        $issues[]=[
-            'id'=>$issueId,'tourId'=>$issueTour,'kind'=>$kind,
-            'place'=>norm((string)($issue['place']??''),180),
-            'description'=>norm((string)($issue['description']??''),3000),
-            'status'=>$status,'coords'=>valid_coords($issue['coords']??null),'photos'=>[],
-            'completedAt'=>$status==='erledigt'?gmdate('c'):null
-        ];
+        $clean=clean_issue($issue,$tourIds);
+        if (isset($seen[$clean['id']])) fail('Doppelte Mangel-ID.');
+        $seen[$clean['id']]=true; $issues[]=$clean;
     }
+    $startTime=valid_time($in['startTime']??null);
+    $endTime=valid_time($in['endTime']??null);
     $data=['tourIds'=>$tourIds,'tourId'=>$tourIds[0],'date'=>$date,
-      'status'=>count($issues)>0?'mangel':'gut',
+      'startTime'=>$startTime,'endTime'=>$endTime,
+      'status'=>entry_status($issues),
       'notes'=>norm((string)($in['notes']??''),5000), 'coords'=>valid_coords($in['coords']??null),
       'issues'=>$issues];
     $saved=update_json('entries',function (&$entries) use ($id,$data){
@@ -332,6 +354,7 @@ if ($action==='entry' && $method==='POST') {
             foreach ($data['issues'] as $i=>$_) {
                 $key=$data['issues'][$i]['id'];
                 $data['issues'][$i]['photos']=$previous[$key]['photos']??[];
+                $data['issues'][$i]['createdAt']=$previous[$key]['createdAt']??$data['issues'][$i]['createdAt'];
                 $wasDone=($previous[$key]['status']??'offen')==='erledigt';
                 $nowDone=$data['issues'][$i]['status']==='erledigt';
                 $data['issues'][$i]['completedAt']=$nowDone?($wasDone?($previous[$key]['completedAt']??gmdate('c')):gmdate('c')):null;
@@ -340,6 +363,7 @@ if ($action==='entry' && $method==='POST') {
             foreach ($data['issues'] as $i) $remaining[$i['id']]=true;
             $discarded=[];
             foreach (($entry['issues']??[]) as $old) if (!isset($remaining[$old['id']])) foreach (($old['photos']??[]) as $photo) $discarded[]=$photo;
+            if ($data['endTime']!==null) $data['running']=false;
             $entry=array_merge($entry,$data,['updatedAt'=>$now]);
             return ['entry'=>$entry,'discarded'=>$discarded];
         }
@@ -391,6 +415,74 @@ if ($action==='issueStatus' && $method==='POST') {
         fail('Streckenpruefung nicht gefunden.',404);
     });
     result(['ok'=>true]+$out);
+}
+// ── Laufende Kontrollfahrt: anlegen, Metadaten ändern/beenden, Mängel einzeln speichern ──
+if ($action==='tripStart' && $method==='POST') {
+    $in=post_json();
+    $tourIds=valid_tour_ids($in['tourIds']??[]);
+    $date=(string)($in['date']??'');
+    if (!valid_date($date)) fail('Datum ist ungültig.');
+    $startTime=valid_time($in['startTime']??null,false);
+    $now=gmdate('c');
+    $entry=['id'=>bin2hex(random_bytes(12)),'createdAt'=>$now,'updatedAt'=>$now,
+        'tourIds'=>$tourIds,'tourId'=>$tourIds[0],'date'=>$date,'startTime'=>$startTime,'endTime'=>null,
+        'running'=>true,'status'=>'gut','notes'=>'','coords'=>null,'issues'=>[],'photos'=>[]];
+    update_json('entries',function (&$entries) use ($entry) { $entries[]=$entry; return true; });
+    result(['ok'=>true,'entry'=>$entry]);
+}
+if ($action==='tripUpdate' && $method==='POST') {
+    $in=post_json();
+    $id=(string)($in['entryId']??'');
+    if (!preg_match('/^[a-f0-9]{24}$/',$id)) fail('Ungültige Eintrags-ID.');
+    $entry=update_json('entries',function (&$entries) use ($id,$in) {
+        $i=find_entry_index($entries,$id); $e=&$entries[$i];
+        if (array_key_exists('date',$in)) { if (!valid_date((string)$in['date'])) fail('Datum ist ungültig.'); $e['date']=(string)$in['date']; }
+        if (array_key_exists('startTime',$in)) $e['startTime']=valid_time($in['startTime'],false);
+        if (array_key_exists('endTime',$in)) $e['endTime']=valid_time($in['endTime']);
+        if (array_key_exists('notes',$in)) $e['notes']=norm((string)$in['notes'],5000);
+        if (array_key_exists('running',$in)) $e['running']=(bool)$in['running'];
+        if (($e['running']??false) && !empty($e['endTime']) && !($in['running']??false)) $e['running']=false;
+        if (array_key_exists('tourIds',$in)) {
+            $ids=valid_tour_ids($in['tourIds']);
+            foreach (($e['issues']??[]) as $iss) if (!in_array($iss['tourId']??'',$ids,true)) fail('Eine Tour mit erfassten Mängeln kann nicht entfernt werden.');
+            $e['tourIds']=$ids; $e['tourId']=$ids[0];
+        }
+        $e['updatedAt']=gmdate('c');
+        return $e;
+    });
+    result(['ok'=>true,'entry'=>$entry]);
+}
+if ($action==='issueSave' && $method==='POST') {
+    $in=post_json();
+    $id=(string)($in['entryId']??'');
+    if (!preg_match('/^[a-f0-9]{24}$/',$id)) fail('Ungültige Eintrags-ID.');
+    $issue=update_json('entries',function (&$entries) use ($id,$in) {
+        $i=find_entry_index($entries,$id); $e=&$entries[$i];
+        $issues=is_array($e['issues']??null)?$e['issues']:[];
+        $issueId=(string)($in['issue']['id']??'');
+        $pos=null; foreach ($issues as $k=>$old) if (($old['id']??'')===$issueId) { $pos=$k; break; }
+        if ($pos===null && count($issues)>=25) fail('Maximal 25 Mängel pro Kontrollfahrt.');
+        $clean=clean_issue($in['issue']??null,$e['tourIds']??[$e['tourId']??'01'],$pos===null?null:$issues[$pos]);
+        if ($pos===null) $issues[]=$clean; else $issues[$pos]=$clean;
+        $e['issues']=array_values($issues); $e['status']=entry_status($e['issues']); $e['updatedAt']=gmdate('c');
+        return $clean;
+    });
+    result(['ok'=>true,'issue'=>$issue]);
+}
+if ($action==='issueDelete' && $method==='POST') {
+    $in=post_json();
+    $id=(string)($in['entryId']??''); $issueId=(string)($in['issueId']??'');
+    if (!preg_match('/^[a-f0-9]{24}$/',$id) || !preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangelkennung.');
+    $photos=update_json('entries',function (&$entries) use ($id,$issueId) {
+        $i=find_entry_index($entries,$id); $e=&$entries[$i];
+        foreach (($e['issues']??[]) as $k=>$iss) if (($iss['id']??'')===$issueId) {
+            array_splice($e['issues'],$k,1); $e['status']=entry_status($e['issues']); $e['updatedAt']=gmdate('c');
+            return $iss['photos']??[];
+        }
+        fail('Mangel nicht gefunden.',404);
+    });
+    foreach ($photos as $p) if (!empty($p['file'])) delete_photo_files($p['file'],(string)($p['id']??''));
+    result(['ok'=>true]);
 }
 if ($action==='deleteEntry' && $method==='POST') {
     $id=(string)(post_json()['id']??'');

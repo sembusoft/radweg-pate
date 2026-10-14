@@ -108,7 +108,7 @@ async function main() {
 
   // Kontrollfahrt mit Mangel
   const issueId = 'i_' + hex(12);
-  r = await a.api('entry', { method: 'POST', json: { tourIds: ['01', '03'], date: '2026-10-14', notes: 'Rauchtest', coords: null,
+  r = await a.api('entry', { method: 'POST', json: { tourIds: ['01', '03'], date: '2026-10-14', startTime: '09:05', endTime: '10:15', notes: 'Rauchtest', coords: null,
     issues: [{ id: issueId, tourId: '01', kind: 'Belag', status: 'offen', place: 'Brücke', description: 'Schlagloch', coords: { lat: 48.32, lon: 10.03 } }] } });
   check(r.data?.ok && r.data.entry?.issues?.length === 1, 'Kontrollfahrt mit Mangel gespeichert', r.data?.error);
   const entryId = r.data?.entry?.id;
@@ -133,6 +133,35 @@ async function main() {
   check(r.data?.ok && r.data.issue?.completedAt, 'Mangel erledigt mit Zeitstempel');
   r = await a.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'offen' } });
   check(r.data?.ok && r.data.issue?.completedAt === null, 'Mangel wieder geöffnet');
+
+  // Laufende Kontrollfahrt: anlegen, Mängel einzeln speichern, beenden
+  r = await a.api('tripStart', { method: 'POST', json: { tourIds: ['02', '05'], date: '2026-10-14', startTime: '14:32' } });
+  check(r.data?.ok && r.data.entry?.running === true && r.data.entry.startTime === '14:32', 'Fahrt gestartet (läuft, Startzeit)', r.data?.error);
+  const tripId = r.data?.entry?.id;
+  r = await a.api('tripStart', { method: 'POST', json: { tourIds: ['02'], date: '2026-10-14', startTime: '25:00' } });
+  check(r.res.status === 400, 'ungültige Startzeit abgelehnt');
+  const t1 = 'i_' + hex(12), t2 = 'i_' + hex(12);
+  r = await a.api('issueSave', { method: 'POST', json: { entryId: tripId, issue: { id: t1, tourId: '05', kind: 'Bewuchs', status: 'offen', time: '14:40', place: 'Feldweg', description: 'Hecke ragt in den Weg', coords: { lat: 48.31, lon: 10.04 } } } });
+  check(r.data?.ok && r.data.issue?.time === '14:40', 'Mangel 1 einzeln gespeichert (mit Uhrzeit)', r.data?.error);
+  r = await a.api('issueSave', { method: 'POST', json: { entryId: tripId, issue: { id: t2, tourId: '02', kind: 'Belag', status: 'offen', time: '14:55', place: 'Brücke', description: '' } } });
+  check(r.data?.ok, 'Mangel 2 einzeln gespeichert');
+  r = await a.api('issueSave', { method: 'POST', json: { entryId: tripId, issue: { id: 'i_' + hex(12), tourId: '07', kind: 'Belag', status: 'offen' } } });
+  check(r.res.status === 400, 'Mangel auf nicht gewählter Tour abgelehnt');
+  const fd2 = new FormData(); fd2.set('entryId', tripId); fd2.set('issueId', t1);
+  fd2.set('file', new Blob([withExif(JPEG)], { type: 'image/jpeg' }), 'hecke.jpg');
+  r = await a.api('upload', { method: 'POST', form: fd2 });
+  check(r.data?.ok, 'Foto zu Mangel 1 hochgeladen', r.data?.error);
+  r = await a.api('issueSave', { method: 'POST', json: { entryId: tripId, issue: { id: t1, tourId: '05', kind: 'Bewuchs', status: 'gemeldet', time: '14:41', place: 'Feldweg Nord', description: 'Hecke ragt in den Weg' } } });
+  check(r.data?.issue?.photos?.length === 1 && r.data.issue.status === 'gemeldet', 'Mangel 1 geändert, Foto bleibt erhalten');
+  r = await a.api('issueDelete', { method: 'POST', json: { entryId: tripId, issueId: t2 } });
+  check(r.data?.ok, 'Mangel 2 gelöscht');
+  r = await a.api('tripUpdate', { method: 'POST', json: { entryId: tripId, endTime: '15:20', notes: 'Fahrt beendet' } });
+  check(r.data?.ok && r.data.entry.running === false && r.data.entry.endTime === '15:20' && r.data.entry.issues.length === 1, 'Fahrt beendet (Endzeit, läuft nicht mehr)', r.data?.error);
+  r = await a.api('bootstrap');
+  const trip = r.data?.entries?.find(e => e.id === tripId);
+  check(trip?.status === 'mangel' && trip.issues[0].place === 'Feldweg Nord', 'Fahrt im Tagebuch mit Mangel');
+  r = await a.api('deleteEntry', { method: 'POST', json: { id: tripId } });
+  check(r.data?.ok, 'Testfahrt wieder gelöscht');
 
   // Export
   const exp = await a.req('api.php?action=export');

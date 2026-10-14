@@ -19,6 +19,8 @@ export const ICONS = [
   'pencil', 'trash', 'check', 'arrow-back-up', 'camera', 'current-location', 'info-circle', 'list-check',
   // Karte: Auswahl umschalten
   'square-check', 'square-x', 'chevron-down',
+  // Laufende Kontrollfahrt
+  'clock', 'flag',
   // Einstellungen
   'palette', 'text-size', 'lock', 'logout', 'refresh'
 ];

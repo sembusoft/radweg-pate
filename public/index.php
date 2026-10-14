@@ -54,6 +54,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           <button type="button" class="kpi" data-goto="diary" aria-label="Tagebuch anzeigen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#clipboard-check"/></svg><strong id="stat-entries">0</strong><span id="stat-entries-label">Prüfungen</span></button>
           <button type="button" class="kpi" id="kpi-issues" data-goto="diary" data-filter="offen" aria-label="Offene Mängel anzeigen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#alert-triangle"/></svg><strong id="stat-issues">0</strong><span>offene Mängel</span></button>
         </div>
+        <button type="button" class="trip-banner" id="trip-banner" hidden><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#bike"/></svg><span id="trip-banner-text">Kontrollfahrt läuft</span><span class="trip-banner-go">Fortsetzen</span></button>
       </header>
       <main>
         <section id="map-view" class="view">
@@ -112,6 +113,29 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           </div><p class="smallnote">Zum Homescreen: Safari „Teilen → Zum Home-Bildschirm“, Chrome „Installieren“. Für Änderungen und Foto-Uploads ist eine Internetverbindung nötig.</p>
           <p class="smallnote app-imprint">Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</p>
         </section>
+        <section id="trip-view" class="view" hidden aria-labelledby="trip-title">
+          <div class="trip-head">
+            <p class="eyebrow" id="trip-state">Kontrollfahrt läuft</p>
+            <h2 id="trip-title">Kontrollfahrt</h2>
+            <div class="trip-times">
+              <label>Datum<input type="date" id="trip-date"></label>
+              <label>Start<input type="time" id="trip-start"></label>
+            </div>
+          </div>
+          <details class="surface trip-nav"><summary><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#navigation"/></svg> Navigation &amp; GPX</summary><div id="trip-navigation"></div></details>
+          <section class="trip-section" aria-labelledby="trip-new-title">
+            <div class="trip-section-head"><h3 id="trip-new-title">Auf dieser Fahrt erfasst</h3><span id="trip-new-count" class="chip">0</span></div>
+            <div id="trip-issue-list" class="start-issue-list" aria-live="polite"></div>
+          </section>
+          <section class="trip-section" aria-labelledby="trip-open-title">
+            <div class="trip-section-head"><h3 id="trip-open-title">Noch offene Mängel dieser Touren</h3><span id="trip-open-count" class="issue-counter">0 offen</span></div>
+            <div id="trip-open-list" class="start-issue-list" aria-live="polite"></div>
+          </section>
+          <div class="trip-bar">
+            <button type="button" class="btn outline" id="trip-finish"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#flag"/></svg> Fahrt beenden</button>
+            <button type="button" class="btn primary" id="trip-add-issue"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#plus"/></svg> Mangel erfassen</button>
+          </div>
+        </section>
       </main>
       <nav class="bottom-nav" aria-label="Hauptbereiche">
         <button type="button" class="tab active" data-tab="map"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#map"/></svg><span>Karte</span></button>
@@ -147,17 +171,42 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
     <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>
     <p class="smallnote prefs-version">Radwegpate · Version <?= htmlspecialchars(APP_VERSION) ?></p>
   </div></dialog>
-  <dialog id="start-dialog" class="modal start-modal" aria-labelledby="start-heading"><div class="modal-content">
-    <div class="modal-heading"><div><p class="eyebrow">KONTROLLFAHRT</p><h2 id="start-heading">Tour starten</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
-    <p id="start-tour-label" class="muted"></p>
-    <section class="start-defects" aria-label="Vorhandene offene Mängel"><div class="start-defects-heading"><h3>Noch offene Mängel</h3><span id="start-issue-count" class="issue-counter">0</span></div><div id="start-issue-list" class="start-issue-list" aria-live="polite"></div></section><div id="start-navigation" class="start-navigation" aria-label="Navigation"></div>
-    <p class="smallnote">Die Liste enthält bestehende Mängel dieser Touren aus früheren Prüfungen. Ein erledigter Mangel bleibt im Tagebuch dokumentiert und verschwindet nur aus der offenen Liste.</p>
-    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Schließen</button><button type="button" class="btn primary" id="start-diary"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#plus"/></svg> Kontrollfahrt dokumentieren</button></div>
-  </div></dialog>
+  <dialog id="trip-start-dialog" class="modal" aria-labelledby="trip-start-heading"><form id="trip-start-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow">Kontrollfahrt</p><h2 id="trip-start-heading">Fahrt beginnen</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <div class="entry-routes-wrapper"><span class="form-label">Touren dieser Fahrt</span><div id="trip-start-routes" class="entry-route-options" role="group" aria-label="Touren dieser Fahrt"></div></div>
+    <div class="time-row"><label>Datum<input type="date" id="trip-start-date" required></label><label>Startzeit<input type="time" id="trip-start-time" required></label></div>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#bike"/></svg> Fahrt beginnen</button></div>
+  </form></dialog>
+  <dialog id="issue-dialog" class="modal" aria-labelledby="issue-heading"><form id="issue-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow" id="issue-eyebrow">Neuer Mangel</p><h2 id="issue-heading">Mangel erfassen</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <input type="hidden" id="issue-id">
+    <div class="issue-sheet-grid">
+      <label id="issue-tour-wrap">Tour<select id="issue-tour"></select></label>
+      <label>Art<select id="issue-kind"></select></label>
+      <label>Uhrzeit<input type="time" id="issue-time" required></label>
+      <label>Status<select id="issue-status"></select></label>
+    </div>
+    <label>Ort / Abschnitt<input id="issue-place" maxlength="180" placeholder="z. B. Brücke, Straßenname, Kreuzung"></label>
+    <label>Beschreibung<textarea id="issue-description" maxlength="3000" rows="3" placeholder="Was ist defekt oder aufgefallen?"></textarea></label>
+    <div class="gps-row"><span id="issue-gps-label" class="muted">GPS: nicht erfasst</span><button type="button" class="btn outline small" id="issue-gps"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#current-location"/></svg> Neu erfassen</button><button type="button" class="link-btn" id="issue-gps-clear" hidden>Entfernen</button></div>
+    <label class="upload-field"><span><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#camera"/></svg> Fotos <small>(max. 5 je Mangel)</small></span><input type="file" id="issue-photos" accept="image/*" multiple></label>
+    <div id="issue-existing-photos" class="photos-row"></div>
+    <button type="button" class="text-btn danger-link" id="issue-delete" hidden><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#trash"/></svg> Mangel löschen</button>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary" id="issue-save"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#check"/></svg> Speichern</button></div>
+  </form></dialog>
+  <dialog id="trip-finish-dialog" class="modal" aria-labelledby="trip-finish-heading"><form id="trip-finish-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow">Kontrollfahrt</p><h2 id="trip-finish-heading">Fahrt beenden</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <p id="trip-finish-summary" class="muted"></p>
+    <label>Endzeit<input type="time" id="trip-end-time" required></label>
+    <label>Allgemeine Notiz<textarea id="trip-notes" maxlength="5000" rows="3" placeholder="Wetter, allgemeiner Zustand, besondere Beobachtungen …"></textarea></label>
+    <label class="upload-field"><span><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#camera"/></svg> Allgemeine Fotos zur Fahrt <small>(optional, max. 8)</small></span><input type="file" id="trip-photos" accept="image/*" multiple></label>
+    <button type="button" class="text-btn danger-link" id="trip-discard" hidden><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#trash"/></svg> Fahrt verwerfen (noch nichts erfasst)</button>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Weiterfahren</button><button type="submit" class="btn primary" id="trip-finish-save"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#flag"/></svg> Fahrt abschließen</button></div>
+  </form></dialog>
   <dialog id="entry-dialog" class="modal"><form id="entry-form" class="modal-content" method="dialog">
     <div class="modal-heading"><div><p class="eyebrow">RADWEGPATE</p><h2 id="entry-heading">Neue Streckenprüfung</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
     <input type="hidden" name="id" id="entry-id">
-    <div class="entry-date-row"><label for="entry-date">Gefahren / geprüft am<input type="date" id="entry-date" name="date" required></label></div>
+    <div class="time-row time-row-3"><label for="entry-date">Datum<input type="date" id="entry-date" name="date" required></label><label>Start<input type="time" id="entry-start" name="startTime"></label><label>Ende<input type="time" id="entry-end" name="endTime"></label></div>
     <div class="entry-routes-wrapper"><span class="form-label">Kontrollierte Touren (mehrere möglich)</span><div id="entry-routes" class="entry-route-options" role="group" aria-label="Kontrollierte Touren"></div><small class="smallnote">Es können alle sieben Touren in einer Kontrollfahrt dokumentiert werden. Jede Tour ist anschließend im Tagebuch filterbar.</small></div>
     <label>Allgemeine Notiz zur Kontrollfahrt<textarea name="notes" id="entry-notes" maxlength="5000" rows="3" placeholder="Wetter, allgemeiner Zustand, besondere Beobachtungen …"></textarea></label>
     <div class="gps-row"><span id="gps-label" class="muted">GPS-Position der Kontrollfahrt: nicht erfasst</span><button type="button" class="btn outline small" id="get-position"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#current-location"/></svg> Position erfassen</button><button type="button" class="link-btn" id="clear-position" hidden>Entfernen</button></div>
