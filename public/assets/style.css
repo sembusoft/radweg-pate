@@ -603,3 +603,7 @@ body:has(#trip-view:not([hidden])) .toast { bottom: calc(var(--nav-h) + 84px + e
   .btn, .kpi, .icon-button, .nav-add, .seg-group span, .status, .issue-state { border: 2px solid ButtonText; }
   .bottom-nav .tab.active { outline: 2px solid Highlight; }
 }
+
+/* Vorübergehender GPX-Test im Zahnrad-Blatt */
+.gpx-test-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+#gpx-test-status { min-height: 1.5em; word-break: break-word; }

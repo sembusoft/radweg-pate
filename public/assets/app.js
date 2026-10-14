@@ -384,7 +384,41 @@ function setupAppearance(){
  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
  applyAppearance();
 }
+// --- Vorübergehender Test: GPX per Teilen-Menü an andere Apps (iOS-PWA). Wird nach dem Test entfernt.
+const gpxTest={blob:null,name:'',loading:null};
+function gpxTestStatus(msg){$('#gpx-test-status').textContent=msg;}
+function gpxTestPrepare(){
+ if(gpxTest.blob||gpxTest.loading)return gpxTest.loading;
+ const route=state.routes.find(r=>routeLines(r.id).length);
+ if(!route){$('#gpx-test-file').textContent='Keine Tour mit Linien vorhanden.';return null;}
+ gpxTest.loading=fetch(mapDownloadUrl(route.id),{credentials:'same-origin'}).then(async res=>{
+   if(!res.ok)throw new Error('HTTP '+res.status);
+   const cd=res.headers.get('content-disposition')||'';
+   gpxTest.name=(cd.match(/filename="?([^";]+)"?/)||[])[1]||('radwegpate-tour-'+route.id+'.gpx');
+   gpxTest.blob=await res.blob();
+   const share=!!navigator.share,files=typeof navigator.canShare==='function';
+   $('#gpx-test-file').textContent=`Bereit: ${gpxTest.name} (${gpxTest.blob.size} Bytes) · share: ${share?'ja':'nein'} · canShare: ${files?'ja':'nein'}`;
+ }).catch(err=>{gpxTest.loading=null;$('#gpx-test-file').textContent='GPX konnte nicht geladen werden: '+err.message;});
+ return gpxTest.loading;
+}
+function gpxTestShare(type,btn){
+ const label=btn.textContent.trim();
+ if(!gpxTest.blob){gpxTestStatus(label+': GPX noch nicht bereit, bitte gleich nochmal.');gpxTestPrepare();return;}
+ if(!navigator.share){gpxTestStatus(label+': Teilen wird hier nicht unterstützt.');return;}
+ const file=new File([gpxTest.blob],gpxTest.name,type?{type}:{});
+ const data={files:[file]};
+ let can='–';try{can=typeof navigator.canShare==='function'?String(navigator.canShare(data)):'–';}catch(e){can='Fehler '+e.name;}
+ // share() direkt im Klick aufrufen – kein await davor, sonst verfällt die Nutzeraktion.
+ let p;try{p=navigator.share(data);}catch(e){gpxTestStatus(`${label}: canShare=${can} · Fehler ${e.name}`);return;}
+ gpxTestStatus(`${label}: canShare=${can} · Teilen-Menü geöffnet …`);
+ p.then(()=>gpxTestStatus(`${label}: canShare=${can} · geteilt ✓`))
+  .catch(e=>gpxTestStatus(`${label}: canShare=${can} · ${e.name==='AbortError'?'abgebrochen':'Fehler '+e.name}`));
+}
+function setupGpxTest(){
+ $$('[data-gpx-type]').forEach(b=>b.addEventListener('click',()=>gpxTestShare(b.dataset.gpxType,b)));
+}
 function setupEvents(){
+ setupGpxTest();
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
@@ -394,7 +428,7 @@ function setupEvents(){
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
- $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
+ $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();gpxTestPrepare();});
  $('#new-entry-diary').addEventListener('click',()=>openTripStart([]));
  // Plus in der Tab-Leiste: auf der Karte mit den gewählten Touren vorbelegt.
  $('#mobile-add').addEventListener('click',()=>{
