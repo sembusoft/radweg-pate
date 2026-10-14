@@ -154,7 +154,7 @@ function renderTrip(){
  $('#trip-new-count').textContent=own.length;
  $('#trip-issue-list').innerHTML=own.length?own.map(i=>tripIssueCard(e,i)).join(''):'<p class="smallnote">Noch nichts erfasst. „Mangel erfassen“ unten legt den ersten an – Uhrzeit und Standort werden dabei gleich übernommen.</p>';
  const open=pendingIssues(ids).filter(x=>x.entry.id!==e.id);
- $('#trip-open-count').textContent=`${open.length} offen`;
+ $('#trip-open-count').textContent=`${open.length} offen`;$('#trip-open-count').classList.toggle('none',open.length===0);
  $('#trip-open-list').innerHTML=open.length?open.map(({entry,issue})=>openIssueCard(entry,issue)).join(''):'<div class="no-pending">'+ic('circle-check')+' Für diese Touren sind keine älteren Mängel offen.</div>';
  $('#trip-finish').hidden=!e.running;$('#trip-add-issue').hidden=!e.running;
 }

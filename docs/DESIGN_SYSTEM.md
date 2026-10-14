@@ -102,6 +102,19 @@ Windows-Kontrastmodus.
 eines unter der Schwelle liegt (Text 4,5:1, Hochkontrast 7:1, Umrisse/Fokus 3:1).
 **Wer ein Token ändert oder eine neue Paarung einführt, ergänzt dort das Paar.**
 
+### Bedeutung der Signalfarben
+
+Eine Bedeutung, eine Farbe – überall (Status-Pillen, Zähler, Kennzahl-Badge, Tagebuch):
+
+| Farbe | Bedeutung | Wo |
+|---|---|---|
+| **rot** (`--danger-*`) | offen – hier muss etwas passieren | Status *Offen*, Zähler „n offen“, Badge *offene Mängel* bei > 0 |
+| **gelb** (`--warning-*`) | in Arbeit | Status *Gemeldet*, Balken *Kontrollfahrt läuft*, „läuft“ im Tagebuch |
+| **blau** (`--info-*`) | in Bearbeitung bei Dritten | Status *In Bearbeitung* |
+| **grün** (`--success-*`) | erledigt / nichts offen | Status *Erledigt*, „0 offen“, „Alle erledigt“ |
+
+Zahlen allein (Anzahl Prüfungen, Touren, Kilometer) sind **neutral** (`.chip`), nicht farbig.
+
 ### Tourfarben
 
 `.tour-c01` … `.tour-c07` (Punkte in der Tourliste) = `MAP_COLORS` in `app.js` (Linien auf der

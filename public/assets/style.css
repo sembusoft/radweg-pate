@@ -198,7 +198,7 @@ main { padding-top: 8px; }
 .kpi strong { font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
 .kpi span { grid-column: 1 / -1; text-align: center; font-size: .8125rem; font-weight: 600; color: var(--text-muted); line-height: 1.2; overflow-wrap: anywhere; }
 .kpi .ic { color: var(--primary-text); width: 1.125rem; height: 1.125rem; }
-.kpi.kpi-warn { background: var(--warning-bg); color: var(--warning-text); border-color: currentColor; }
+.kpi.kpi-warn { background: var(--danger-bg); color: var(--danger-text); border-color: currentColor; }
 .kpi.kpi-warn span, .kpi.kpi-warn .ic { color: inherit; }
 .kpi.kpi-ok .ic { color: var(--success-text); }
 .kpi:hover { background: var(--surface-2); }
@@ -281,7 +281,10 @@ main { padding-top: 8px; }
   border: var(--bw) solid transparent;
 }
 .status.gut, .issue-state.erledigt { background: var(--success-bg); color: var(--success-text); }
-.status.hinweis, .issue-state.gemeldet, .issue-counter { background: var(--warning-bg); color: var(--warning-text); }
+/* Farbbedeutung (überall gleich): rot = offen · gelb = gemeldet/läuft · blau = in Bearbeitung · grün = erledigt/0 offen */
+.status.hinweis, .issue-state.gemeldet { background: var(--warning-bg); color: var(--warning-text); }
+.issue-counter { background: var(--danger-bg); color: var(--danger-text); }
+.issue-counter.none { background: var(--success-bg); color: var(--success-text); }
 .status.mangel, .issue-state.offen { background: var(--danger-bg); color: var(--danger-text); }
 .issue-state.bearbeitung { background: var(--info-bg); color: var(--info-text); }
 :root[data-theme^="hc-"] .status, :root[data-theme^="hc-"] .issue-state, :root[data-theme^="hc-"] .issue-counter { border-color: currentColor; }
