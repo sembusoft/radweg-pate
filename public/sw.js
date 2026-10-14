@@ -1,16 +1,18 @@
 // Versionsnummer = APP_VERSION aus version.php (CI prüft das, scripts/check.mjs).
-const CACHE_NAME = 'radwegpate-3.8.3';
+const CACHE_NAME = 'radwegpate-3.8.4';
+const VERSION = CACHE_NAME.slice('radwegpate-'.length);
 
-// App-Shell ohne ?v=-Parameter: index.php hängt ?v=<Version> an, der Abgleich
-// läuft unten mit ignoreSearch. Eine neue Version erkennt der Browser an der
-// geänderten CACHE_NAME-Zeile dieser Datei.
+// App-Shell MIT ?v=<Version> – genau so, wie index.php die Dateien einbindet.
+// Abgeglichen wird exakt (ohne ignoreSearch): eine neue index.php bekommt so nie ein altes
+// app.js/style.css aus einem älteren Cache (das ergab in Safari eine leere, schwarze Seite).
+const v = p => `${p}?v=${VERSION}`;
 const SHELL = [
   './',
-  './assets/style.css',
-  './assets/app.js',
+  v('./assets/style.css'),
+  v('./assets/app.js'),
+  v('./assets/theme-init.js'),
   './assets/icon.svg',
   './assets/icons.svg',
-  './assets/theme-init.js',
   './assets/icon-192.png',
   './assets/vendor/leaflet-1.9.4/leaflet.css',
   './assets/vendor/leaflet-1.9.4/leaflet.js',
@@ -39,9 +41,9 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Statische Dateien: aus dem Cache, sonst Netz (und für später ablegen).
+  // Statische Dateien: exakt aus dem Cache, sonst Netz (und für später ablegen).
   e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req).then(res => {
+    caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok && res.type === 'basic') {
         const copy = res.clone();
         caches.open(CACHE_NAME).then(c => c.put(req, copy));

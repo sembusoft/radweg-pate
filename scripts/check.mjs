@@ -19,7 +19,7 @@ else if (version !== cache) fail(`Version: version.php ${version} ≠ sw.js ${ca
 else ok('Version ' + version + ' in version.php und sw.js');
 
 // 2. Service-Worker-Shell zeigt nur auf vorhandene Dateien
-const shell = [...(sw.match(/const SHELL = \[([\s\S]*?)\]/) || [, ''])[1].matchAll(/'\.\/([^']*)'/g)].map(m => m[1]);
+const shell = [...(sw.match(/const SHELL = \[([\s\S]*?)\];/) || [, ''])[1].matchAll(/'\.\/([^'?]*)/g)].map(m => m[1]);
 const missing = shell.filter(f => f && !existsSync(root + f));
 missing.length ? fail('sw.js SHELL verweist auf fehlende Dateien: ' + missing.join(', ')) : ok(`sw.js SHELL: ${shell.length} Einträge vorhanden`);
 

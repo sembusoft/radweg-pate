@@ -3,6 +3,8 @@ declare(strict_types=1);
 require __DIR__ . '/version.php';
 $v = rawurlencode(APP_VERSION);
 header('Content-Type: text/html; charset=utf-8');
+// Die Seite selbst nie aus dem HTTP-Cache: nach einem Deploy muss sofort die neue Fassung kommen.
+header('Cache-Control: no-cache, must-revalidate');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('X-Frame-Options: DENY');
