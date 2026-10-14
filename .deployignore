@@ -6,7 +6,6 @@
 # ── Bleibt auf dem Server, niemals überschreiben oder löschen ──
 /config.php
 /.user.ini
-/radweg-pate_private/
 /radwegpate_private/
 
 # ── Wird bewusst nicht ausgeliefert ──

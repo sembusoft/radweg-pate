@@ -2,6 +2,11 @@
 
 Options -Indexes
 
+# Privater Datenordner (Tagebuch, Fotos, Passwort-Hash) liegt im Webroot:
+# jeder Zugriff von außen endet mit 404 – unabhängig von der .htaccess,
+# die die App zusätzlich im Ordner selbst anlegt.
+RedirectMatch 404 "(?i)^/(.*/)?radwegpate_private(/|$)"
+
 # Konfiguration und Hilfsdateien nie direkt ausliefern
 <FilesMatch "^(config(\.example)?\.php|version\.php|\..*)$">
     Require all denied

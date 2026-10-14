@@ -12,6 +12,8 @@ name: Deploy (radweg-pate.de)
 #              SSH_USER  (z. B. ssh-w0XXXXXX)
 #              SSH_KEY   (privater Schlüssel, nur für dieses Deployment)
 #   Variablen: REMOTE_PATH (z. B. /www/htdocs/w0XXXXXX/radweg-pate.de)
+#              Datenordner liegt darunter (radwegpate_private) und ist per
+#              .deployignore vor Übertragen und Löschen geschützt.
 #              APP_URL     (https://radweg-pate.de)
 #              SSH_PORT    (optional, Vorgabe 22)
 on:
@@ -192,6 +194,21 @@ jobs:
           echo "**config.php von außen:** HTTP $CFG (erwartet 403)" >> "$GITHUB_STEP_SUMMARY"
           [ "$CFG" = "403" ] || echo "::warning::config.php antwortet mit $CFG statt 403 – greift die .htaccess?"
 
+          exit $FEHLER
+
+      # Läuft auch im Probelauf: ein GET ändert nichts, und ein offener Datenordner
+      # ist der eine Befund, der nicht bis zum nächsten echten Lauf warten darf.
+      - name: Datenordner von außen gesperrt?
+        run: |
+          URL="${{ vars.APP_URL }}"; URL="${URL%/}"
+          [ -z "$URL" ] && URL='https://radweg-pate.de'
+          FEHLER=0
+          for P in radwegpate_private/install.json radwegpate_private/entries.json radwegpate_private/ radwegpate_private/photos/; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/$P" || echo 000)
+            echo "/$P → HTTP $CODE"
+            echo "**/$P:** HTTP $CODE" >> "$GITHUB_STEP_SUMMARY"
+            case "$CODE" in 2*) echo "::error::$URL/$P ist ÖFFENTLICH abrufbar (HTTP $CODE)! Sofort public/.htaccess auf dem Server prüfen."; FEHLER=1;; esac
+          done
           exit $FEHLER
 
       - name: Aufräumen

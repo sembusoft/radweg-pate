@@ -39,7 +39,9 @@ function storage(): string {
     }
     if (!is_writable($dir)) fail('APP_DATA_DIR ist nicht beschreibbar.', 500);
     // Zweite Sicherung, falls der Ordner doch unter einer (anderen) Domain im Web liegt.
-    if (!is_file($dir.'/.htaccess')) @file_put_contents($dir.'/.htaccess', "Require all denied\nDeny from all\n");
+    if (!is_file($dir.'/.htaccess') && @file_put_contents($dir.'/.htaccess', "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n    Deny from all\n</IfModule>\n")===false) {
+        fail('Schutzdatei im Datenordner konnte nicht angelegt werden.', 500);
+    }
     return $dir;
 }
 function read_json(string $name, array $default=[]): array {

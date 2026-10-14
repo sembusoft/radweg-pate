@@ -23,18 +23,30 @@ Den öffentlichen Schlüssel auf dem Server an `~/.ssh/authorized_keys` anhänge
 
 ### 3. Datenordner und config.php auf dem Server
 
+Der Datenordner liegt **im Webroot**: `radweg-pate.de/radwegpate_private/`
+(Tagebuch, Fotos, KML-Daten, Passwort-Hash). Er ist von außen dreifach gesperrt:
+
+1. `public/.htaccess`: `RedirectMatch 404` auf `/radwegpate_private/…`
+2. Die App legt im Ordner selbst eine `.htaccess` mit `Require all denied` an.
+3. Jeder Deploy-Lauf (auch der Probelauf) ruft `install.json`, `entries.json`
+   und den Ordner von außen ab und wird **rot**, wenn eine Antwort 2xx ist.
+
+Der Deploy überträgt und löscht in diesem Ordner nichts (`.deployignore`).
+Ordnername nur zusammen mit `public/.htaccess`, `.deployignore` und
+`scripts/check.mjs` ändern.
+
 Per SSH (Pfade an das eigene Konto anpassen):
 
 ```bash
-cd /www/htdocs/w0XXXXXX
-mkdir -p radweg-pate_private && chmod 700 radweg-pate_private
-php -r "echo bin2hex(random_bytes(16)), PHP_EOL;"   # neuen Einrichtungscode erzeugen
-nano radweg-pate.de/config.php                        # Inhalt wie public/config.example.php
-chmod 600 radweg-pate.de/config.php
+cd /www/htdocs/w0XXXXXX/radweg-pate.de
+mkdir -p radwegpate_private && chmod 700 radwegpate_private   # existiert schon
+php -r "echo bin2hex(random_bytes(16)), PHP_EOL;"            # neuen Einrichtungscode erzeugen
+nano config.php                                              # Inhalt wie public/config.example.php
+chmod 600 config.php
 ```
 
 In `config.php`: `APP_INSTALL_TOKEN` = der eben erzeugte Code,
-`APP_DATA_DIR` = `/www/htdocs/w0XXXXXX/radweg-pate_private`.
+`APP_DATA_DIR` = `__DIR__ . '/radwegpate_private'` (wie in der Vorlage).
 
 **Nicht** den alten Code aus `projekt_dokumente/` weiterverwenden.
 
@@ -50,16 +62,12 @@ Repository → Settings → Environments → `production` anlegen:
 | Variable | `REMOTE_PATH` | `/www/htdocs/w0XXXXXX/radweg-pate.de`    |
 | Variable | `APP_URL`     | `https://radweg-pate.de`                 |
 
-### 5. Bestehende Daten übernehmen (falls die App schon unter frag-volker.de/pate lief)
+### 5. Bestehende Daten
 
-Aus dem alten privaten Ordner (`radwegpate_private`) nach
-`radweg-pate_private` kopieren: `install.json`, `entries.json`, `routes.json`,
-`map_data.json` und den Ordner `photos/`. Passwort, Tagebuch, Fotos und
-KML-Zuordnung bleiben damit erhalten; eine Einrichtung ist nicht nötig.
-
-```bash
-cp -a /PFAD/ZUM/ALTEN/radwegpate_private/. /www/htdocs/w0XXXXXX/radweg-pate_private/
-```
+Liegen `install.json`, `entries.json`, `routes.json`, `map_data.json` und
+`photos/` bereits in `radweg-pate.de/radwegpate_private/`, gilt alles weiter:
+Passwort, Tagebuch, Fotos und KML-Zuordnung. Eine Einrichtung ist nicht nötig.
+Vor dem ersten Deploy den Ordner trotzdem einmal per FTP sichern.
 
 ## Jedes Deployment
 

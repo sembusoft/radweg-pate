@@ -14,13 +14,14 @@ declare(strict_types=1);
 define('APP_INSTALL_TOKEN', 'HIER-EINEN-ZUFAELLIGEN-CODE-EINTRAGEN');
 
 // Privater Datenordner: Tagebuch, Fotos, KML-Daten, Passwort-Hash.
-// MUSS außerhalb des Webroots liegen. all-inkl, Webroot
-//   /www/htdocs/w0XXXXXX/radweg-pate.de
-// → Daten z. B. nach
-//   /www/htdocs/w0XXXXXX/radweg-pate_private
-// Die App legt dort zusätzlich eine .htaccess mit "Require all denied" an,
-// falls der Ordner doch über eine andere Domain erreichbar sein sollte.
-define('APP_DATA_DIR', dirname(__DIR__) . '/radweg-pate_private');
+// Liegt unterhalb des Webroots: /www/htdocs/w0XXXXXX/radweg-pate.de/radwegpate_private
+// Von außen dreifach gesperrt:
+//   1. public/.htaccess antwortet auf /radwegpate_private/… mit 404,
+//   2. die App legt im Ordner selbst eine .htaccess "Require all denied" an,
+//   3. der Deploy prüft nach jedem Lauf, dass install.json nicht abrufbar ist.
+// Der Deploy überträgt und löscht in diesem Ordner nichts (.deployignore).
+// Name nur ändern, wenn auch public/.htaccess und .deployignore angepasst werden.
+define('APP_DATA_DIR', __DIR__ . '/radwegpate_private');
 
 // Maximale Größe je hochgeladenem Foto in MB.
 define('APP_MAX_UPLOAD_MB', 8);

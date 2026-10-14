@@ -2,7 +2,6 @@
 public/config.php
 
 # Private Daten (Tagebuch, Fotos, Passwort-Hash) – nie ins Repository
-radweg-pate_private/
 radwegpate_private/
 *.json.lock
 

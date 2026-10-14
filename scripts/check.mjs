@@ -33,6 +33,12 @@ for (const f of ['index.php', 'assets/app.js']) {
 }
 /\son(click|change|submit|load)=/.test(index) ? fail('index.php: Inline-Eventhandler – von der CSP blockiert') : ok('index.php: keine Inline-Eventhandler');
 
+// 3b. Datenordner im Webroot muss gesperrt sein
+/RedirectMatch 404 "[^"]*radwegpate_private/.test(read('.htaccess'))
+  ? ok('.htaccess sperrt radwegpate_private') : fail('public/.htaccess sperrt den Datenordner radwegpate_private nicht');
+(read('config.example.php').match(/APP_DATA_DIR',\s*__DIR__ \. '\/([^']+)'/) || [])[1] === 'radwegpate_private'
+  ? ok('config.example.php: Datenordner radwegpate_private') : fail('config.example.php: APP_DATA_DIR passt nicht zur Sperre in .htaccess');
+
 // 4. Asset-Verweise in index.php existieren
 for (const m of index.matchAll(/(?:src|href)="(assets\/[^"?]+)/g)) {
   existsSync(root + m[1]) ? null : fail('index.php verweist auf fehlende Datei ' + m[1]);
