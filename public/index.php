@@ -63,7 +63,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
             <div class="map-slider">
               <section class="actions-pane" id="selection-actions" aria-labelledby="actions-title" inert>
                 <h3 id="actions-title">Aktionen zur Auswahl</h3>
-                <div class="combo-buttons"><a class="btn primary" id="selection-gpx" hidden href="#"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> GPX für Komoot</a><button type="button" class="btn primary" id="selection-start" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#bike"/></svg> Tour starten · Mängel prüfen</button></div>
+                <div class="combo-buttons"><a class="btn primary" id="selection-gpx" hidden href="#"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> GPX für Naviki</a><button type="button" class="btn primary" id="selection-start" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#bike"/></svg> Tour starten · Mängel prüfen</button></div>
                 <div id="selection-navigation" class="selection-navigation"></div>
                 <p class="map-hint">Die Linien kommen ausschließlich aus deiner KML – keine erfundenen Wege.</p>
               </section>

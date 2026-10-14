@@ -125,7 +125,12 @@
 
 /* ---------- 2. Grundlagen ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { font-size: calc(100% * var(--fs)); -webkit-text-size-adjust: 100%; }
+html {
+  font-size: calc(100% * var(--fs)); -webkit-text-size-adjust: 100%;
+  /* Sprungziele nicht hinter Kopfleiste/Karte bzw. Tab-Leiste (Werte setzt app.js) */
+  scroll-padding-top: calc(var(--topbar-h, 140px) + var(--stage-h, 0px) + 8px);
+  scroll-padding-bottom: calc(var(--nav-h) + 16px);
+}
 body {
   margin: 0;
   font-family: var(--font);
@@ -354,7 +359,8 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
 .map-stage {
   --map-h: clamp(240px, 42dvh, 420px);
   position: sticky; top: var(--topbar-h, 140px); z-index: 30;
-  overflow: hidden; padding-bottom: 10px; background: var(--bg);
+  overflow: hidden; overflow: clip; /* clip: auch per Skript nicht verschiebbar */
+  padding-bottom: 10px; background: var(--bg);
 }
 .map-slider { display: flex; width: 200%; transform: translateX(-50%); transition: transform .32s ease; }
 .map-stage.show-actions .map-slider { transform: translateX(0); }

@@ -62,7 +62,7 @@ function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))
 function routeCard(r){
  const entries=counts(r.id), recent=entries[0], tourIssueCount=entries.reduce((n,e)=>n+entryIssues(e).filter(i=>i.tourId===r.id).length,0),openCount=pendingIssues([r.id]).length;
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
- const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button> <a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Komoot</a>`:'<span class="map-empty">Noch keine KML-Linie zugeordnet</span>';
+ const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button> <a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<span class="map-empty">Noch keine KML-Linie zugeordnet</span>';
  return `<article class="route-card">
   <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div></div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
@@ -121,10 +121,10 @@ function renderStartIssues(){
  const nav=$('#start-navigation');
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   nav.innerHTML=`<strong>Navigation</strong><div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Originalstrecke</button><a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Komoot</a></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
+   nav.innerHTML=`<strong>Navigation</strong><div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Originalstrecke</button><a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }else {
    const check=comboCheck(ids);
-   nav.innerHTML=`<strong>Navigation der Kombination</strong><div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Komoot</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
+   nav.innerHTML=`<strong>Navigation der Kombination</strong><div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
  }
  if(!open.length){wrap.innerHTML='<div class="no-pending">'+ic('circle-check')+' Für die ausgewählten Touren sind aktuell keine offenen Mängel eingetragen.</div>';return;}
  wrap.innerHTML=open.map(({entry,issue})=>{
@@ -300,7 +300,7 @@ function setupEvents(){
    const osmAll=e.target.closest('[data-show-selected-map]');if(osmAll){
       $('#start-dialog').close();selectTab('map');setMapActions(false);
       state.visibleRoutes=new Set(state.startTourIds);saveVisibleRoutes();renderMap();zoomMap();
-      $('#pate-map').scrollIntoView({behavior:'smooth',block:'start'});
+      showMapStage();
       toast('Ausgewählte Originalstrecken auf der OSM-Karte angezeigt.');
    }
    const osm=e.target.closest('[data-show-map-route]');if(osm){
@@ -308,7 +308,7 @@ function setupEvents(){
       selectTab('map');setMapActions(false);
       const id=osm.dataset.showMapRoute;
       state.visibleRoutes=new Set([id]);saveVisibleRoutes();renderMap();zoomMap(id);
-      $('#pate-map').scrollIntoView({behavior:'smooth',block:'start'});
+      showMapStage();
       toast('KML-Originalstrecke auf der OpenStreetMap-Karte angezeigt.');
    }
    const delPhoto=e.target.closest('[data-photo-delete]');if(delPhoto)deletePhoto(delPhoto.dataset.photoDelete);
@@ -472,7 +472,7 @@ function renderSelectionSummary(){
  $('#map-fab').hidden=n===0;
  if(n===0)setMapActions(false);
  const link=$('#selection-gpx');link.hidden=!check.ok;
- if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Komoot':' Kombination als GPX für Komoot');}
+ if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Naviki':' Kombination als GPX für Naviki');}
  else link.removeAttribute('href');
  $('#selection-start').disabled=n===0;
  $('#selection-start').innerHTML=ic('bike')+(n?` Tour starten · ${pendingIssues(ids).length} offene Mängel`:' Tour starten · Mängel prüfen');
@@ -485,7 +485,7 @@ function renderSelectionSummary(){
        <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google Maps · Ziel</a>
        <a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple Karten · Ziel</a></div>`;
    } else if(routeById(id)?.type==='runde'){
-     nav.innerHTML='<p class="smallnote">Rundtour: Start und Ziel sind identisch. Für die <b>vollständige Streckenführung</b> bitte GPX herunterladen und in Komoot importieren. Google/Apple/OSM können diese KML-Rundtour nicht per Link übernehmen.</p>';
+     nav.innerHTML='<p class="smallnote">Rundtour: Start und Ziel sind identisch. Für die <b>vollständige Streckenführung</b> bitte GPX herunterladen und in Naviki importieren. Google/Apple/OSM können diese KML-Rundtour nicht per Link übernehmen.</p>';
    } else {
      nav.innerHTML='<p class="smallnote"><b>Wendepunkt fehlt im gespeicherten Kartenimport.</b> Bitte unter <b>Einstellungen → KML importieren</b> deine ursprüngliche vollständige My-Maps-KML einmal erneut einlesen. Dann erscheinen die Ziel-Buttons mit dem tatsächlichen Wendepunkt, statt versehentlich Flurweg 7 als Ziel zu verwenden.</p>';
    }
@@ -607,10 +607,21 @@ function setMapActions(open){
  fab.title=open?'Zurück zur Karte':'Aktionen zur Auswahl';
  if(open)$('#selection-actions').scrollTop=0;
 }
-// Höhe der klebenden Kopfleiste als CSS-Variable – die Karte bleibt direkt darunter stehen.
+// Höhen der klebenden Teile als CSS-Variablen: die Karte bleibt direkt unter der Kopfleiste stehen,
+// und automatisches Scrollen (Fokus, Sprungziele) landet nicht hinter Karte oder Kopfleiste.
 function trackTopbarHeight(){
- const bar=$('.topbar');if(!bar||!window.ResizeObserver)return;
- new ResizeObserver(()=>document.documentElement.style.setProperty('--topbar-h',bar.offsetHeight+'px')).observe(bar);
+ const bar=$('.topbar'),stage=$('#map-stage'),root=document.documentElement;
+ if(!bar||!window.ResizeObserver)return;
+ const ro=new ResizeObserver(()=>{root.style.setProperty('--topbar-h',bar.offsetHeight+'px');root.style.setProperty('--stage-h',(stage?.offsetHeight||0)+'px');});
+ ro.observe(bar);if(stage)ro.observe(stage);
+}
+// Zur Karte springen: Seite so weit scrollen, dass die Karte unter der Kopfleiste steht.
+// Kein scrollIntoView() auf der Karte – das verschiebt auch den geklippten Rahmen und die Karte rutscht aus dem Bild.
+function showMapStage(){
+ const stage=$('#map-stage');if(!stage)return;
+ stage.scrollLeft=0;
+ const y=window.scrollY+stage.getBoundingClientRect().top-$('.topbar').offsetHeight;
+ window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
 }
 function mapEvents(){
  trackTopbarHeight();

@@ -2,7 +2,7 @@
 
 PWA für Radwegpaten: Touren aus einer My-Maps-KML anzeigen, Kontrollfahrten
 dokumentieren, Mängel mit Fotos und GPS erfassen und bis zur Erledigung
-verfolgen, GPX für Komoot exportieren.
+verfolgen, GPX für Naviki exportieren.
 
 Produktiv: <https://radweg-pate.de> (all-inkl). PHP 8.1+, keine Datenbank –
 die Daten liegen als JSON-Dateien in einem privaten Ordner außerhalb des Webroots.

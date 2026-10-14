@@ -6,7 +6,7 @@ für Gestaltung zusätzlich [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md).
 
 Radwegpate ist eine PWA für **eine** Radwegpatin bzw. einen Radwegpaten: Touren aus einer
 My-Maps-KML anzeigen, Kontrollfahrten dokumentieren, Mängel mit Foto und GPS erfassen und bis zur
-Erledigung verfolgen, GPX für Komoot exportieren. Produktiv unter <https://radweg-pate.de> (all-inkl).
+Erledigung verfolgen, GPX für Naviki exportieren. Produktiv unter <https://radweg-pate.de> (all-inkl).
 
 ---
 
