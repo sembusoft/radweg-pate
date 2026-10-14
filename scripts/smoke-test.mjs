@@ -4,6 +4,16 @@
 // Kontrollfahrt mit Mangel und Foto, Erledigt-Status, GPX, Passwortwechsel, Löschen.
 import { existsSync, readdirSync } from 'node:fs';
 
+// Jede Antwort sofort vollständig lesen. Ungelesene Antworten auf einer Keep-Alive-Verbindung
+// zum PHP-Testserver lassen Node 22 (undici) mit "assert(!this.paused)" abstürzen, sobald eine
+// Antwort größer als der Puffer ist (seit app.js > 64 KB, CI-Lauf #10).
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  const r = await rawFetch(...args);
+  const body = await r.arrayBuffer();
+  return new Response(r.status === 204 || r.status === 304 ? null : body, { status: r.status, statusText: r.statusText, headers: r.headers });
+};
+
 const BASE = (process.env.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
 const TOKEN = process.env.INSTALL_TOKEN || '';
 const DATA_DIR = process.env.DATA_DIR || '';
