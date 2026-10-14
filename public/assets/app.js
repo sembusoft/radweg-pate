@@ -39,7 +39,7 @@ function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
  if(force)toast('Bitte erneut anmelden.',true);
 }
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
-async function loadData(){const data=await api('bootstrap');state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
+async function loadData(){const data=await api('bootstrap');state.gpxToken=data.gpxToken||'';state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
 function selectTab(tab){state.tab=tab;setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
@@ -62,7 +62,7 @@ function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))
 function routeCard(r){
  const entries=counts(r.id), recent=entries[0], tourIssueCount=entries.reduce((n,e)=>n+entryIssues(e).filter(i=>i.tourId===r.id).length,0),openCount=pendingIssues([r.id]).length;
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
- const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
+ const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
  return `<article class="route-card">
   <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div><button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button></div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
@@ -125,10 +125,10 @@ function timeSpan(e){return e.startTime?(e.endTime?`${e.startTime}–${e.endTime
 function tripNavigationHtml(ids){
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
+   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }
  const check=comboCheck(ids);
- return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" href="api.php?action=gpx&ids=${encodeURIComponent(ids.join(','))}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
+ return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" target="_blank" rel="noopener" href="${comboDownloadUrl(ids)}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
 }
 function photoThumbs(photos,max=5){return (photos||[]).slice(0,max).map(p=>`<a href="api.php?action=photo&id=${esc(p.id)}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${esc(p.id)}&thumb=1" loading="lazy" alt="Foto ${esc(p.name)}" width="96" height="76"></a>`).join('');}
 function openIssueCard(entry,issue){
@@ -384,36 +384,7 @@ function setupAppearance(){
  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
  applyAppearance();
 }
-// GPX auf dem Handy: nicht als Download öffnen (iOS zeigt in der Homescreen-App dann eine
-// Dateivorschau ohne Zurück-Knopf), sondern selbst laden und das Teilen-Menü öffnen
-// (dort u. a. "In Naviki öffnen"); die App bleibt im Vordergrund. Ohne Datei-Teilen (PC) bleibt
-// der normale Download. Geladen wird schon beim Antippen, damit das Teilen in der Geste bleibt.
-const gpxCache=new Map();
-function gpxFile(url){
- if(!gpxCache.has(url))gpxCache.set(url,fetch(url,{credentials:'same-origin'}).then(async r=>{
-   if(!r.ok||!(r.headers.get('content-type')||'').includes('gpx'))throw new Error('GPX konnte nicht geladen werden.');
-   const name=((r.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)||[])[1]||'tour.gpx';
-   return new File([await r.blob()],name,{type:'application/gpx+xml'});
- }).catch(err=>{gpxCache.delete(url);throw err;}));
- return gpxCache.get(url);
-}
-function canShareFiles(){try{return !!navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.gpx',{type:'application/gpx+xml'})]});}catch(e){return false;}}
-function setupGpxShare(){
- const link=e=>e.target.closest?.('a[href*="action=gpx"]');
- document.addEventListener('pointerdown',e=>{const a=link(e);if(a&&canShareFiles())gpxFile(a.href).catch(()=>{});},{passive:true});
- document.addEventListener('click',async e=>{
-   const a=link(e);if(!a||!canShareFiles())return;
-   e.preventDefault();
-   try{const file=await gpxFile(a.href);await navigator.share({files:[file],title:file.name});}
-   catch(err){
-     if(err.name==='AbortError')return; // Teilen abgebrochen
-     if(err.name==='NotAllowedError'){toast('GPX ist bereit – bitte noch einmal tippen.');return;}
-     toast(err.message||'Teilen nicht möglich.',true);
-   }
- });
-}
 function setupEvents(){
- setupGpxShare();
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
@@ -509,7 +480,11 @@ function kmLine(points){let km=0;for(let i=1;i<points.length;i++){
   km+=6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
  }return km;}
 function routeLineKm(id){return routeLines(id).reduce((n,line)=>n+kmLine(line),0);}
-function mapDownloadUrl(id){return 'api.php?action=gpx&id='+encodeURIComponent(id);}
+// GPX-Links öffnen in einem eigenen Fenster (iOS-Homescreen-App: Vorschau mit „Fertig“ und
+// „In Naviki öffnen“). Der Schlüssel dl erlaubt dort den Download ohne die Cookies der App.
+const gpxKey=()=>state.gpxToken?'&dl='+encodeURIComponent(state.gpxToken):'';
+function mapDownloadUrl(id){return 'api.php?action=gpx&id='+encodeURIComponent(id)+gpxKey();}
+function comboDownloadUrl(ids){return 'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','))+gpxKey();}
 function startCoordinate(id){let lines=routeLines(id);return lines[0]?.[0]||null;}
 function endCoordinate(id){let lines=routeLines(id);return lines[lines.length-1]?.at(-1)||null;}
 // Das Ende jeder Hin-und-Rueck-KML ist der START und darf NIE als Gemeindegrenze dienen.
@@ -636,7 +611,7 @@ function renderSelectionSummary(){
  $('#map-fab').hidden=n===0;
  if(n===0)setMapActions(false);
  const link=$('#selection-gpx');link.hidden=!check.ok;
- if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','));link.innerHTML=ic('download')+(n===1?' Tour als GPX für Naviki':' Kombination als GPX für Naviki');}
+ if(check.ok){link.href=n===1?mapDownloadUrl(ids[0]):comboDownloadUrl(ids);link.innerHTML=ic('download')+(n===1?' Tour als GPX für Naviki':' Kombination als GPX für Naviki');}
  else link.removeAttribute('href');
  $('#selection-start').disabled=n===0;
  $('#selection-start').innerHTML=ic('bike')+(n?` Tour starten · ${pendingIssues(ids).length} offene Mängel`:' Tour starten · Mängel prüfen');

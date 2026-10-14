@@ -105,6 +105,14 @@ async function main() {
   const gpx = await a.req('api.php?action=gpx&id=01');
   const gpxText = await gpx.text();
   check(gpx.status === 200 && (gpxText.match(/<trkpt /g) || []).length === 5, 'GPX für Tour 01 mit 5 Punkten');
+  const boot = await a.api('bootstrap');
+  check(/^[a-f0-9]{32}$/.test(boot.data?.gpxToken || ''), 'bootstrap liefert GPX-Schlüssel');
+  let anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + boot.data.gpxToken);
+  check(anon.status === 200 && (anon.headers.get('content-type') || '').includes('gpx'), 'GPX mit Schlüssel ohne Anmeldung (eigenes Browserfenster)');
+  anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + 'f'.repeat(32));
+  check(anon.status === 401, 'GPX mit falschem Schlüssel → 401');
+  anon = await fetch(BASE + '/api.php?action=bootstrap&dl=' + boot.data.gpxToken);
+  check(anon.status === 401, 'Schlüssel öffnet nichts außer GPX');
 
   // Kontrollfahrt mit Mangel
   const issueId = 'i_' + hex(12);

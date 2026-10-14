@@ -231,8 +231,30 @@ if ($action==='logout' && $method==='POST') {
     session_regenerate_id(true);
     result(['ok'=>true]);
 }
-require_login();
-if ($method==='POST') check_csrf();
+// GPX-Schlüssel: Die Homescreen-App auf dem iPhone öffnet GPX in einem eigenen Browserfenster
+// (mit „Fertig“-Knopf). Dieses Fenster teilt die Cookies der App nicht – deshalb trägt der Link einen
+// zeitlich begrenzten Schlüssel, der NUR den GPX-Download erlaubt (12 h, je Sitzung, serverseitig gespeichert).
+const GPX_TOKEN_TTL = 12 * 3600;
+function gpx_token_valid(string $token): bool {
+    if (!preg_match('/^[a-f0-9]{32}$/',$token)) return false;
+    $tokens=read_json('gpx_tokens');
+    return isset($tokens[$token]) && (int)$tokens[$token] > time();
+}
+function issue_gpx_token(): string {
+    if (!empty($_SESSION['gpxToken']) && (int)($_SESSION['gpxTokenExp']??0) > time()+3600) return (string)$_SESSION['gpxToken'];
+    $token=bin2hex(random_bytes(16)); $exp=time()+GPX_TOKEN_TTL;
+    update_json('gpx_tokens',function (&$tokens) use ($token,$exp) {
+        $tokens=array_filter($tokens,fn($e)=>(int)$e>time()); // abgelaufene entfernen
+        $tokens[$token]=$exp; return true;
+    });
+    $_SESSION['gpxToken']=$token; $_SESSION['gpxTokenExp']=$exp;
+    return $token;
+}
+$gpxByToken = $action==='gpx' && $method==='GET' && gpx_token_valid((string)($_GET['dl']??''));
+if (!$gpxByToken) {
+    require_login();
+    if ($method==='POST') check_csrf();
+}
 
 
 function map_info(): array {
@@ -240,7 +262,7 @@ function map_info(): array {
 }
 function map_valid_id(string $value): bool { return preg_match('/^[a-f0-9]{16}$/', $value)===1; }
 function gpx_escape(string $s): string { return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8'); }
-if ($action==='bootstrap' && $method==='GET') result(['ok'=>true,'routes'=>read_json('routes',defaults()),'entries'=>read_json('entries')]);
+if ($action==='bootstrap' && $method==='GET') result(['ok'=>true,'routes'=>read_json('routes',defaults()),'entries'=>read_json('entries'),'gpxToken'=>issue_gpx_token()]);
 if ($action==='route' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['id']??'');
