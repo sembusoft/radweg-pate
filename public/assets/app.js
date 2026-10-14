@@ -85,7 +85,7 @@ function render(){
  $('#filter-tour').innerHTML='<option value="">Alle Touren</option>'+choices;
  $('#filter-tour').value=previous;
  $('#entry-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tourIds" value="${esc(r.id)}"><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
- $('#settings-routes').innerHTML=state.routes.map(r=>`<div class="settings-route"><span>${esc(r.id)} · ${esc(r.name)}</span><button type="button" class="text-btn" data-route-edit="${r.id}">${ic('pencil')} Bearbeiten</button></div>`).join('');
+ if(state.mapData)renderMapSettings();
  renderDiary();if(state.mapData)renderMap();
 }
 function renderDiary(){
@@ -276,7 +276,7 @@ function setupEvents(){
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
- $('#settings-button').addEventListener('click',()=>selectTab('settings'));
+ $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
  for(const id of ['new-entry-diary','mobile-add'])$('#'+id).addEventListener('click',()=>openEntry());
  for(const k of $$('.kpi'))k.addEventListener('click',()=>{if(k.dataset.goto==='diary'){$('#filter-tour').value='';$('#filter-status').value=k.dataset.filter||'';renderDiary();}selectTab(k.dataset.goto);});
  setupAppearance();
@@ -325,7 +325,7 @@ function setupEvents(){
    e.preventDefault();const fd=new FormData(e.target);
    try{await api('password','POST',{old:fd.get('old'),new:fd.get('new')});e.target.reset();toast('Passwort geändert.');}catch(err){toast(err.message,true);}
  });
- $('#logout-button').addEventListener('click',async()=>{try{await api('logout','POST');state.loggedIn=false;state.entries=[];state.mapData=null;if(state.leafletMap){state.leafletMap.remove();state.leafletMap=null;}showAuth(false);toast('Abgemeldet.');}catch(err){toast(err.message,true);}});
+ $('#logout-button').addEventListener('click',async()=>{try{await api('logout','POST');$('#prefs-dialog').close();state.loggedIn=false;state.entries=[];state.mapData=null;if(state.leafletMap){state.leafletMap.remove();state.leafletMap=null;}showAuth(false);toast('Abgemeldet.');}catch(err){toast(err.message,true);}});
  for(const dialog of $$('.modal'))dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
 }
 async function deleteEntry(id){if(!window.confirm('Diesen Tagebucheintrag samt Fotos wirklich löschen?'))return;try{await api('deleteEntry','POST',{id});await refresh();toast('Eintrag gelöscht.');}catch(err){toast(err.message,true);}}
@@ -496,7 +496,10 @@ function renderMapSettings(){
   const current=m.assignments?.[src.id]||'';
   const options='<option value="">Nicht zuordnen</option>'+state.routes.map(r=>`<option value="${r.id}" ${current===r.id?'selected':''}>${esc(r.id)} · ${esc(r.name)}</option>`).join('');
   const km=(src.lines||[]).reduce((v,line)=>v+kmLine(line),0);
-  return `<div class="source-row"><span><strong>${esc(src.name)}</strong><small>${src.lines.length} Linien · ${km.toFixed(1).replace('.',',')} km (KML)</small></span><select data-source-assign="${src.id}" aria-label="${esc(src.name)} zuordnen">${options}</select></div>`;
+  const route=routeById(current),lines=src.lines.length;
+  const title=route?`${esc(route.id)} · ${esc(route.name)}`:'Keiner Tour zugeordnet';
+  const edit=route?`<button type="button" class="icon-button small" data-route-edit="${esc(route.id)}" aria-label="Tour ${esc(route.id)} bearbeiten: Name, Bereich, Länge, Hinweis" title="Tour bearbeiten">${ic('pencil')}</button>`:'';
+  return `<div class="source-row"><div class="source-head"><strong class="${route?'':'muted'}">${title}</strong>${edit}</div><small>KML-Ebene: ${esc(src.name)} · ${lines} ${lines===1?'Linie':'Linien'} · ${km.toFixed(1).replace('.',',')} km</small><label class="sr-only" for="assign-${src.id}">Tour für KML-Ebene ${esc(src.name)}</label><select id="assign-${src.id}" data-source-assign="${src.id}">${options}</select></div>`;
  }).join(''):'<p class="smallnote">Nach dem Import erscheinen die Ebenen hier.</p>';
  $('#save-assignments').disabled=!count;
 }

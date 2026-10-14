@@ -1,6 +1,6 @@
 # Radwegpate — Design-System
 
-**Stand:** 14.10.2026 · Version 3.5.0
+**Stand:** 14.10.2026 · Version 3.6.0
 **Gilt für:** `public/assets/style.css`, `public/index.php`, `public/assets/app.js`
 **Vorbild:** FightReg (`DESIGN_SYSTEM.md`, Kapitel 4 und 16) — gleiche Begriffe, kleiner zugeschnitten.
 
@@ -110,13 +110,17 @@ Die Farbe ist nie der einzige Hinweis: Tournummer und Name stehen immer daneben.
 
 ## 4. Bedienelemente
 
+**Radien gering** (seit 3.6.0): `--radius` **8 px** für Karten, Kästen, Dialoge; `--radius-sm`
+**6 px** für Knöpfe, Felder, Badges, Status, kleine Kästen. Keine Pillenform, keine festen
+Radiuswerte in Bausteinen. Rund bleiben nur Kreise (Plus-Taste, Kartenpunkte, `50%`).
+
 | Baustein | Maß | Regel |
 |---|---|---|
 | `.btn` | **48 px** hoch, 1rem, Radius 12 | `.primary` (Fläche) · `.outline` (Rahmen `--border-strong`) · `.subtle` |
 | `.btn.small` | 44 px, 0.9375rem | nie kleiner |
 | `.btn.full` | volle Breite | Standard in Einstellungen und Formular-Fuß |
 | `.text-btn`, `.link-btn` | 44 px Trefferfläche | für Nebenaktionen (Bearbeiten, Entfernen) |
-| `.icon-button` | 48 × 48 | nur Icon → **immer `aria-label` + `title`** |
+| `.icon-button` | 48 × 48 (`.small` 44 × 44) | nur Icon → **immer `aria-label` + `title`** |
 | Eingabefelder | 48 px, 1rem | Rahmen `--border-strong` (≥ 3:1) |
 | Checkbox/Radio | 22 px | in einer ≥ 48 px hohen Zeile mit Label |
 | `.seg-group` | Pillen 44 px | Einzelwahl als Radios (Darstellung) |
@@ -128,7 +132,7 @@ Gesperrte Knöpfe: `disabled` + `opacity: .55`; der **Grund** steht als Text dan
 
 ```
 ┌ .topbar (sticky) ───────────────────────┐
-│ [Logo] Radwegpate             [⚙ 48px]  │
+│ [Logo] Radwegpate             [⚙ 48px]  │  ← Zahnrad: Blatt „Darstellung & Konto“
 │ [7 Strecken][1 Prüfung][1 offene Mängel]│  ← .kpis: 3 gleich breite Badges
 ├─────────────────────────────────────────┤
 │ Inhalt der aktiven Ansicht (.view)      │
@@ -143,6 +147,13 @@ Gesperrte Knöpfe: `disabled` + `opacity: .55`; der **Grund** steht als Text dan
   `.kpi-warn` (Warnfarbe + Rahmen), sonst `.kpi-ok`.
 - **Tab-Leiste unten:** Icon 26 px + Text 13 px; aktiv = `--primary-text` auf `--primary-soft`
   **und** unterstrichen (nicht nur Farbe). `aria-current="page"` am aktiven Tab.
+- **Zahnrad im Kopf** öffnet das Blatt *Darstellung & Konto* (`#prefs-dialog`): Farbschema,
+  Schriftgröße, Passwort ändern, Abmelden, Version. Das ist alles, was **dieses Gerät bzw. den
+  Zugang** betrifft.
+- **Tab „Einstellungen“** enthält, was die **Daten** betrifft, in dieser Reihenfolge:
+  *Touren und KML-Ebenen* (je Ebene: App-Tourname fett mit Stift zum Bearbeiten, darunter die
+  KML-Ebene klein, darunter die Zuordnung), *KML importieren* (mit der My-Maps-Originalkarte zum
+  Vergleich), *Datensicherung*.
 - **Plus-Taste** in der Mitte: neue Streckenprüfung (gleicher Weg wie „+ Eintrag“ im Tagebuch).
 - **Dialoge** (`<dialog class="modal">`) sind unter 560 px ein **Blatt von unten**, höchstens 94 %
   der Höhe; der Fuß (`.dialog-actions`) klebt unten, damit *Speichern* nie weggescrollt ist.

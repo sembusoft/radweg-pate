@@ -1,6 +1,6 @@
 # Projektanweisungen Radwegpate
 
-**Stand:** 14.10.2026 · Version 3.5.0
+**Stand:** 14.10.2026 · Version 3.6.0
 **Gilt für:** alles in diesem Repository. Bei Widerspruch zu älteren Notizen gilt diese Datei;
 für Gestaltung zusätzlich [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md).
 
@@ -81,7 +81,10 @@ Ausführlich und mit Begründung in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM
 6. **Einspaltig, keine seitliche Verschiebung.** Grid-Spalten immer `minmax(0, 1fr)`,
    Formularelemente `min-width: 0; max-width: 100%`.
 7. **Navigation unten** (Tab-Leiste), Kennzahlen als Badges in der Kopfleiste, Dialoge als Blatt
-   von unten mit festem Fuß.
+   von unten mit festem Fuß. **Zahnrad** = Darstellung & Konto (Gerät/Zugang),
+   **Tab Einstellungen** = Touren, KML, Datensicherung (Daten).
+9. **Geringe Radien:** 8 px für Karten/Kästen, 6 px für Knöpfe/Felder/Badges — nur über
+   `--radius` / `--radius-sm`.
 8. **Text, nicht nur Farbe:** Zustände („offen“, „erledigt“) stehen immer auch als Wort da.
 
 ## 5. Arbeitsweise

@@ -47,7 +47,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
       <header class="topbar">
         <div class="topbar-row">
           <div class="brand"><span class="brand-mark" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg></span><span>Radwegpate<small>Senden &amp; Umgebung</small></span></div>
-          <button class="icon-button" id="settings-button" type="button" aria-label="Einstellungen" title="Einstellungen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#settings"/></svg></button>
+          <button class="icon-button" id="settings-button" type="button" aria-label="Darstellung und Konto" title="Darstellung und Konto" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#settings"/></svg></button>
         </div>
         <div class="kpis" role="group" aria-label="Übersicht">
           <button type="button" class="kpi" data-goto="routes" aria-label="Strecken anzeigen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg><strong id="stat-routes">7</strong><span>Strecken</span></button>
@@ -87,9 +87,35 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           <div class="actions-row"><button class="btn outline" id="export-csv"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Tagebuch als CSV</button></div>
         </section>
         <section id="settings-view" class="view" hidden>
-          <div class="section-heading"><div><h2>Einstellungen</h2><p class="muted">KML-Import, Zuordnung und Sicherung.</p></div></div>
+          <div class="section-heading"><div><h2>Einstellungen</h2><p class="muted">Touren und KML-Ebenen, Import und Datensicherung.</p></div></div>
           <div class="settings-grid">
-            <article class="surface" id="appearance"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#palette"/></svg> Darstellung</h3>
+            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg> Touren und KML-Ebenen</h3>
+              <p class="muted">Fett steht der Name der Tour in der App – mit dem Stift änderst du Name, Bereich, Länge und Hinweis. Darunter die Ebene aus deiner My-Maps-KML und welcher Tour sie zugeordnet ist.</p>
+              <div id="source-assignments"></div>
+              <button type="button" class="btn outline full" id="save-assignments"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#check"/></svg> Zuordnung speichern</button>
+            </article>
+            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → <b>KML</b> wählen und die vollständige Karte exportieren. Vorhandene Tagebucheinträge bleiben erhalten.</p>
+              <form id="kml-form"><label>KML-Datei auswählen<input type="file" id="kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" required></label><button type="submit" class="btn primary full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</button></form>
+              <p id="map-import-info" class="smallnote">Noch kein Import.</p>
+              <details class="reference-map"><summary>Originalkarte in Google My Maps ansehen</summary><p class="muted">Zum Vergleich mit dem Import: zeigt alle My-Maps-Ebenen, unabhängig von der Auswahl auf der Karte.</p><iframe src="https://www.google.com/maps/d/embed?mid=1fJAjiQpdqoh6MZ5s0dh1wRHCcR69G0o&amp;hl=de&amp;ehbc=2E312F" title="My Maps Originalkarte der Radwegpaten-Touren" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></details>
+            </article>
+            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Datensicherung</h3><p class="muted">Touren, Prüfungen und Einzelmängel als JSON-Datei. Fotos sind nicht enthalten – sie liegen im Datenordner auf dem Webspace und werden dort gesichert.</p><a href="api.php?action=export" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> JSON-Sicherung herunterladen</a></article>
+          </div><p class="smallnote">Zum Homescreen: Safari „Teilen → Zum Home-Bildschirm“, Chrome „Installieren“. Für Änderungen und Foto-Uploads ist eine Internetverbindung nötig.</p>
+        </section>
+      </main>
+      <footer>Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</footer>
+      <nav class="bottom-nav" aria-label="Hauptbereiche">
+        <button type="button" class="tab active" data-tab="map"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#map"/></svg><span>Karte</span></button>
+        <button type="button" class="tab" data-tab="routes"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg><span>Touren</span></button>
+        <button type="button" class="nav-add" id="mobile-add" aria-label="Neue Streckenprüfung" title="Neue Streckenprüfung"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#plus"/></svg></button>
+        <button type="button" class="tab" data-tab="diary"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#notebook"/></svg><span>Tagebuch</span></button>
+        <button type="button" class="tab" data-tab="settings"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#settings"/></svg><span>Einstellungen</span></button>
+      </nav>
+    </section>
+  </div>
+  <dialog id="prefs-dialog" class="modal" aria-labelledby="prefs-heading"><div class="modal-content">
+    <div class="modal-heading"><div><p class="eyebrow">Persönlich</p><h2 id="prefs-heading">Darstellung &amp; Konto</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <section id="appearance" class="prefs-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#palette"/></svg> Darstellung</h3>
               <fieldset class="seg-group"><legend>Farbschema</legend><div class="seg-options">
                 <label><input type="radio" name="theme" value="auto"><span>Automatisch</span></label>
                 <label><input type="radio" name="theme" value="light"><span>Hell</span></label>
@@ -103,28 +129,15 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
                 <label><input type="radio" name="fontsize" value="fs-xl"><span>Sehr groß</span></label>
               </div></fieldset>
               <p class="smallnote">Gilt für dieses Gerät. „Automatisch“ folgt der Einstellung des Handys.</p>
-            </article>
-            <article class="surface"><h3>KML-Strecken importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → möglichst <b>KML</b> wählen und die vollständige Karte exportieren. Die Datei hier hochladen. Vorhandene Tagebucheinträge bleiben erhalten.</p>
-              <form id="kml-form"><label>KML-Datei auswählen<input type="file" id="kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" required></label><button type="submit" class="btn primary full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</button></form>
-              <p id="map-import-info" class="smallnote">Noch kein Import.</p>
-              <details class="reference-map"><summary>Originalkarte in Google My Maps ansehen</summary><p class="muted">Zum Vergleich mit dem Import: zeigt alle My-Maps-Ebenen, unabhängig von der Auswahl auf der Karte.</p><iframe src="https://www.google.com/maps/d/embed?mid=1fJAjiQpdqoh6MZ5s0dh1wRHCcR69G0o&amp;hl=de&amp;ehbc=2E312F" title="My Maps Originalkarte der Radwegpaten-Touren" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></details><div class="rule"></div>
-              <h3>Ebenen den Touren zuordnen</h3><p class="muted">Wenn My Maps andere Ebenennamen verwendet, kannst du sie hier zuordnen. Jede Ebene enthält eine oder mehrere Linien.</p><div id="source-assignments"></div><button type="button" class="btn outline full" id="save-assignments">Zuordnung speichern</button>
-              <div class="rule"></div><h3>Tourennamen und Details</h3><div id="settings-routes"></div>
-              </article>
-            <article class="surface"><h3>Datensicherung</h3><p class="muted">Lade Touren, Prüfungen und Einzelmängel als JSON-Datei herunter. Die Fotos sind darin nicht enthalten: Diese müssen separat auf dem Webspace gesichert werden.</p><a href="api.php?action=export" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> JSON-Sicherung</a><div class="rule"></div><h3>Passwort ändern</h3><form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form><div class="rule"></div><button type="button" class="btn subtle" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button></article>
-          </div><p class="smallnote">Mobil zum Homescreen: In Safari „Teilen → Zum Home-Bildschirm“ oder in Chrome „Installieren/Zum Startbildschirm“ auswählen. Für Änderungen und Foto-Uploads ist eine Internetverbindung notwendig.</p>
-        </section>
-      </main>
-      <footer>Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</footer>
-      <nav class="bottom-nav" aria-label="Hauptbereiche">
-        <button type="button" class="tab active" data-tab="map"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#map"/></svg><span>Karte</span></button>
-        <button type="button" class="tab" data-tab="routes"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg><span>Touren</span></button>
-        <button type="button" class="nav-add" id="mobile-add" aria-label="Neue Streckenprüfung" title="Neue Streckenprüfung"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#plus"/></svg></button>
-        <button type="button" class="tab" data-tab="diary"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#notebook"/></svg><span>Tagebuch</span></button>
-        <button type="button" class="tab" data-tab="settings"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#settings"/></svg><span>Einstellungen</span></button>
-      </nav>
+            </section>
+    <div class="rule"></div>
+    <section class="prefs-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</h3>
+      <form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
     </section>
-  </div>
+    <div class="rule"></div>
+    <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>
+    <p class="smallnote prefs-version">Radwegpate · Version <?= htmlspecialchars(APP_VERSION) ?></p>
+  </div></dialog>
   <dialog id="start-dialog" class="modal start-modal" aria-labelledby="start-heading"><div class="modal-content">
     <div class="modal-heading"><div><p class="eyebrow">KONTROLLFAHRT</p><h2 id="start-heading">Tour starten</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
     <p id="start-tour-label" class="muted"></p>
