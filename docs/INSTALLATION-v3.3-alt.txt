@@ -1,0 +1,175 @@
+RADWEGPATE v3.2 – ECHTE KML-WENDEPUNKTE AN KARTEN-APPS ÜBERGEBEN
+====================================================================
+Webadresse: https://frag-volker.de/pate/
+Voraussetzungen: PHP 8.1+, HTTPS, privater beschreibbarer Speicherort.
+Nur EIN Radwegpate / ein Benutzerkonto. Keine Datenbank.
+
+WICHTIG VOR DEM UPDATE
+---------------------
+1. Sichere den gesamten Ordner radwegpate_private per FTP (insbesondere
+   install.json, entries.json, map_data.json und den photos-Unterordner).
+2. Lade zusätzlich über Einstellungen > Datensicherung die JSON-Datei herunter.
+3. Entpacke die ZIP-Datei. Lade den INHALT des Ordners radwegpate_webapp
+   nach /public_html/pate/ (oder den bisher verwendeten /pate/-Ordner)
+   und ersetze die dortigen Programmdateien.
+4. NICHT löschen oder überschreiben: den privaten Ordner radwegpate_private.
+   Bestehende Anmeldung, Tagebuch, Fotos und KML-Zuordnungen bleiben erhalten.
+5. Rufe https://frag-volker.de/pate/ neu auf. Auf iPhone/Android ggf.
+   Homescreen-App schließen und wieder öffnen. Bei alten Oberflächen Cache
+   leeren oder neu laden. v3.2 hat eine neue Service-Worker-Cache-Kennung.
+6. Alte Einträge, Fotos, Passwort und Kartenzuordnungen bleiben erhalten.
+
+NEU: KONTROLLFAHRT ÜBER MEHRERE TOUREN
+------------------------------------
+Unter Karte > ALLE TOUREN genau eine oder beliebig viele der sieben Touren
+mit den Häkchen auswählen. Diese EINE Auswahl steuert gleichzeitig die
+Karte, die KML-km-Summe, den GPX-Export und die Aktion
+'+ Kontrollfahrt dokumentieren'. Darunter zeigt 'Ausgewählte Touren' die
+gewählten Touren und Aktionen. Ein separater Kombinations-Block entfällt.
+Wenn du 'Kontrollfahrt dokumentieren' drückst, wird die Auswahl automatisch
+in das Tagebuch übernommen. Im Tagebuch lassen sich Touren außerdem einzeln
+ändern. Vorhandene Tagebucheinträge bleiben unverändert.
+
+Die Karte ist auf dem Desktop 410 Pixel hoch und auf Smartphones 300–330 Pixel.
+Die Checkboxen in 'Neue Streckenprüfung' sind ausdrücklich kleine Checkboxen;
+es werden keine übergroßen Eingabefelder angezeigt. Das Prüfdatum ist in
+einer eigenen Zeile, damit es nicht die gesamte Formularspalte ausdehnt.
+
+NEU: EINZELMÄNGEL ALS ZEILEN
+----------------------------
+Mit '+ Mangelzeile' lassen sich bis zu 25 einzelne Mängel/Beobachtungen
+pro Kontrollfahrt erfassen. Jede Mangelzeile enthält:
+- Zugehörige Tour
+- Mangelart: Belag, Beschilderung, Hindernis, Sicherheit, Verschmutzung,
+  Bewuchs oder Sonstiges
+- Ort / Abschnitt und eigene Beschreibung
+- Bearbeitungsstatus: Offen, Gemeldet, In Bearbeitung, Erledigt
+- GPS-Position (per Knopfdruck mit Standortfreigabe)
+- Eigene Fotos (max. fünf je Mangel; JPG, PNG oder WebP)
+
+Zusätzlich gibt es pro Kontrollfahrt eine allgemeine Notiz, eine optionale
+Fahrt-GPS-Position und bis zu acht allgemeine Fahrtfotos. Insgesamt
+maximal 40 Fotos je Kontrollfahrt, max. 8 MB je hochgeladenem Foto.
+Bisherige Tagebucheinträge werden weiter angezeigt. Beim Bearbeiten
+werden alte Einträge in das neue Format übernommen. Bestehende Fotos
+bleiben als allgemeine Fotos am Eintrag erhalten.
+
+Export: 'Tagebuch als CSV' erzeugt nun je Mangel eine eigene Tabellenzeile;
+Kontrollfahrten ohne Mangel erhalten ebenfalls eine Zeile. Die JSON-Sicherung
+enthält sämtliche Touren, Kontrollen und Mängel, aber NICHT die Fotodateien.
+Die Fotos müssen separat gesichert werden.
+
+KARTENFEHLER 403 – DIE ÄNDERUNG IN V3
+------------------------------------
+In Version 2.1 sendete index.php:
+    Referrer-Policy: no-referrer
+Das verhindert den vom offiziellen OpenStreetMap-Kachelserver geforderten
+Referer-Header. In Version 3 wird die Herkunft datensparsam als Origin
+mitgeteilt:
+    Referrer-Policy: strict-origin-when-cross-origin
+Leaflet und OSM-Kacheln bleiben erhalten. Die wichtige Copyright-Angabe
+'OpenStreetMap-Mitwirkende' bleibt sichtbar.
+
+Wenn du trotz Update weiterhin das Bild '403 Access blocked' siehst:
+1. Browser/App neu laden und prüfen, ob wirklich v3 installiert wurde.
+2. Mit Browser-Entwicklertools (Netzwerk) am HTML-Dokument kontrollieren:
+   Referrer-Policy muss strict-origin-when-cross-origin sein.
+3. In übergeordneten .htaccess-Dateien, Apache-Konfiguration und bei
+   einem vorgeschalteten CDN/Sicherheitsplugin auf Header-Regeln prüfen.
+   Eine zusätzliche Direktive Header always set Referrer-Policy "no-referrer"
+   oder Proxy-Änderung könnte die Einstellung überschreiben.
+4. Wenn dein Hoster das zulässt und tatsächlich überschreibt, kann der
+   Administrator für die /pate/-Seiten (mod_headers nötig) einstellen:
+   Header always set Referrer-Policy "strict-origin-when-cross-origin"
+   Nicht unkontrolliert die .htaccess für die gesamte Domain verändern.
+5. Prüfen, ob die Kachel-Anfragen überhaupt einen Referer senden und nicht
+   vom Browser, einem Privacy-Plugin oder einem weiteren Proxy unterdrückt
+   werden. Eventuelle andere OSM-Nutzungsgründe sind gesondert zu beheben.
+
+Die OSM-Kartenkacheln sind ein externer Onlinedienst mit eigener
+Nutzungsrichtlinie. Details:
+https://operations.osmfoundation.org/policies/tiles/
+
+KML / GPX / KOMBINATIONEN
+------------------------
+Google My Maps: Gesamte Karte als .kml (nicht .kmz, ohne Netzwerk-Link)
+exportieren. In der WebApp: Einstellungen > KML importieren und die
+Zuordnung der sieben Strecken prüfen. Die KML ist die EINZIGE zentrale
+Geometriedatenquelle. Pro Tour oder für eine Kombination aus 2–7 vollständigen
+Touren wird bei Bedarf eine GPX-Datei zum Import in Komoot erzeugt.
+Es müssen KEINE GPX-Dateien zusätzlich per FTP hochgeladen werden.
+
+Die Strecken aus My Maps werden nicht neu berechnet oder durch erfundene
+Wege verbunden. Die 6 ursprünglichen Hin-/Rückrouten sind in deiner KML
+als vollständige Rückfahrten enthalten. Die Strecken sind nicht als
+amtlich oder verkehrstechnisch geprüfte Befahrbarkeit zertifiziert.
+Google/Apple Maps öffnen bei einer einzelnen Auswahl einen Zielpunkt,
+nicht zwingend die Originalroute. Bei mehreren Touren ist GPX der richtige
+Weg. Der Server verbindet nur exakt anschließende KML-Segmente; andernfalls
+wird der gemeinsame GPX-Export deaktiviert, statt einen Weg zu erfinden.
+
+DATENSCHUTZ / SICHERUNG
+----------------------
+- GPS-Standorte nur nach Freigabe deines Browsers.
+- Deine Tagebuchdaten/Fotos werden passwortgeschützt im privaten
+  APP_DATA_DIR außerhalb des Webroots abgelegt.
+- KML-Strecken und Fotos sind nicht öffentlich abrufbar ohne Anmeldung.
+- Externe Dienste: Leaflet (unpkg.com), Kartenkacheln (OSM) und bei Bedarf
+  eingebettetes Google My Maps; dabei fallen übliche Zugriffsdaten an.
+- Fotoaufnahmen mit Personen bitte datenschutzkonform behandeln.
+- Sichere den privaten Datenordner REGELMÄSSIG inklusive Foto-Dateien.
+- Kein automatisches Offline-Tagebuch oder GPS-Tracking enthalten.
+
+KURZTEST NACH UPDATE
+--------------------
+[ ] Login mit unverändertem Passwort möglich
+[ ] Alte Tagebucheinträge, KML und Fotos unverändert vorhanden
+[ ] OSM-Hintergrundkarte ohne 403 sichtbar
+[ ] Ein Eintrag für Touren 01 + 03 + 05 + 07 möglich
+[ ] Alle sieben Touren auswählbar, nur eine Touren-Auswahl auf der Karte
+[ ] GPX-Export für vier bis sieben Touren aus KML korrekt
+[ ] Mobile Checkboxen klein und Beschriftungen lesbar
+[ ] Mindestens zwei Mängelzeilen anlegen, speichern, erneut öffnen
+[ ] Mängelfoto hinzufügen und wieder anzeigen
+[ ] Tourfilter / CSV / JSON funktionieren
+
+Stand 14.10.2026 · Version 3.2
+
+
+KARTEN-APPS AUF DEM HANDY (v3.2) – WICHTIG
+------------------------------------------
+1. Nach Aktualisierung auf v3.2 UNBEDINGT dieselbe vollständige originale
+   My-Maps-KML unter Einstellungen → KML importieren EINMAL NEU einlesen.
+   Die alten Versionen haben die separaten Wendepunkt-Placemarks NICHT
+   gespeichert. Tagebuch, Mängel, Fotos und Konto bleiben erhalten.
+2. Bei EINER der Touren 01–06 und erfolgreichem Import werden Google-Maps-,
+   Apple-Karten- und OpenStreetMap-Buttons unter der Auswahl sichtbar.
+   Google/Apple erhalten als Ziel die originale GPS-Koordinate des Wendepunkts
+   an der Gemeindegrenze. OSM zeigt einen PIN am selben Punkt. Die Linie
+   der ORIGINAL-KML kann keiner dieser drei Anbieter über einen simplen
+   Navigationslink als feste Strecke übernehmen! Die Anbieter können eine
+   andere Strecke zum Ziel berechnen. Bitte als Radwegpate darauf achten.
+3. Bei Tour 07 oder Auswahl mehrerer Touren ist der GPX-Export für Komoot
+   die einzige Möglichkeit, den tatsächlich eingezeichneten Streckenverlauf
+   mitzunehmen. Zum Import auf dem Telefon GPX speichern/teilen, in Komoot
+   gespeicherte Tour → Importieren wählen. Bei der Komoot-Abfrage ggf.
+   „Originalroute beibehalten“ auswählen statt automatisch neu zu planen.
+4. Wenn die Buttons fehlen, steht im Auswahlbereich der konkrete Grund.
+   In Einstellungen prüfen: „6 Wendepunkt-Marker“ bei dieser KML.
+5. Die Kartenlinks sind direkte HTTPS-Adressen, die sich auf iOS/Android
+   je nach Gerätekonfiguration in der nativen App oder im Browser öffnen.
+
+
+VERSION 3.3: Tourstart und Mängelliste
+- Neue Schaltfläche „Tour starten“ bei ausgewählten Karten-Touren und jeder Tourkarte.
+- Beim Start werden nur noch NICHT erledigte Mängel der gewählten Touren angezeigt.
+- Einzelne Mängel können direkt im Tourstart oder Tagebuch als erledigt markiert werden.
+- Erledigte Mängel bleiben inklusive Fotos in alten Kontrollfahrten erhalten; sie können wieder geöffnet werden.
+- Datum/Uhrzeit der Erledigung wird bei einer Statusänderung gespeichert.
+- Kein Datenbank-Upgrade notwendig, bestehende JSON-Daten bleiben kompatibel.
+- OSM-Link: Statt eines nackten Zielmarkers zeigt die eigene OpenStreetMap-basierte Leaflet-Karte die gesamte Original-KML-Linie an. Ein gewöhnlicher OSM-Weblink kann keine KML übergeben.
+- Update: komplette Programmdateien hochladen, privaten Datenordner keinesfalls löschen. Cache/Website auf dem Smartphone neu starten.
+- Die Schaltfläche „Tour starten“ zeigt zuerst offene Mängel samt bestehenden Fotos und GPS-Punkten. Aus demselben Fenster sind Navigation (Google/Apple zum Wendepunkt), eigene OSM-KML-Karte und GPX möglich.
+- Im Tagebuch steht „Als erledigt markieren“ an jeder Mangelzeile. Durch „Wieder öffnen“ wird ein versehentlich abgeschlossenes Problem erneut sichtbar.
+- Der CSV-Export enthält nun auch das Erledigungsdatum.
+- Eine neue Kontrollfahrt wird erst erstellt, wenn du ausdrücklich „Kontrollfahrt dokumentieren“ anklickst und speicherst. Der Klick auf „Tour starten“ erzeugt keinen Tagebucheintrag.

@@ -1,0 +1,17 @@
+# Server-Konfiguration mit Einrichtungscode – nur auf dem Server bzw. lokal
+public/config.php
+
+# Private Daten (Tagebuch, Fotos, Passwort-Hash) – nie ins Repository
+radweg-pate_private/
+radwegpate_private/
+*.json.lock
+
+# Projektunterlagen mit Adressen/Codes (KML, Notizen) – bleiben lokal
+projekt_dokumente/
+
+# Werkzeuge
+node_modules/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

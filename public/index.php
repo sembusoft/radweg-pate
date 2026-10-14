@@ -1,0 +1,140 @@
+<?php
+declare(strict_types=1);
+require __DIR__ . '/version.php';
+$v = rawurlencode(APP_VERSION);
+header('Content-Type: text/html; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('X-Frame-Options: DENY');
+// Leaflet liegt lokal unter assets/vendor/ – keine fremden Skript- oder Stilquellen.
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src https://www.google.com; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'self'");
+?><!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f7f4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Radwegpate">
+  <meta name="description" content="Meine Radwegpaten-Touren und Streckenkontrollen dokumentieren. Ohne Datenbank.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <link rel="stylesheet" href="assets/vendor/leaflet-1.9.4/leaflet.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?= $v ?>">
+  <title>Radwegpate · Tourentagebuch</title>
+</head>
+<body>
+  <div class="page-shell" id="page-shell">
+    <section id="auth" class="auth-panel" hidden>
+      <div class="brand brand-big"><span class="brand-mark" aria-hidden="true">↝</span><span>Radwegpate<small>Tourentagebuch Senden</small></span></div>
+      <div class="auth-card">
+        <h1 id="auth-title">Anmelden</h1>
+        <p class="muted" id="auth-desc">Deine Dokumentation ist durch ein Passwort geschützt.</p>
+        <form id="auth-form">
+          <label id="setup-code-wrap" hidden>Einrichtungscode<input id="setup-code" type="text" autocomplete="one-time-code" placeholder="APP_INSTALL_TOKEN aus config.php"></label>
+          <label>Passwort<input id="auth-password" type="password" minlength="12" autocomplete="current-password" required></label>
+          <button type="submit" class="btn primary full" id="auth-submit">Anmelden</button>
+        </form>
+        <div id="auth-error" class="message error" role="alert" hidden></div>
+      </div>
+      <p class="smallnote">Keine Datenbank · private JSON-Dateien auf deinem Webspace · Version <?= htmlspecialchars(APP_VERSION) ?></p>
+    </section>
+
+    <section id="main" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">↝</span><span>Radwegpate<small>Senden & Umgebung</small></span></div>
+        <div class="top-actions"><span class="tag desktop-only">7 Strecken</span><button class="icon-button" id="settings-button" type="button" aria-label="Einstellungen" title="Einstellungen">⚙</button></div>
+      </header>
+      <main>
+        <section class="hero">
+          <div class="hero-content"><div class="eyebrow">RADWEG-DOKUMENTATION</div><h1>Unterwegs. Gesehen.<br><em>Festgehalten.</em></h1><p>Deine Touren und Streckenprüfungen – übersichtlich an einem Ort.</p>
+            <button type="button" class="btn primary" id="new-entry-hero">＋ Neue Streckenprüfung</button></div>
+          <div class="hero-symbol" aria-hidden="true"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><span>🚲</span></div>
+        </section>
+        <section class="stats" aria-label="Statistik">
+          <article class="stat"><span>Strecken</span><strong id="stat-routes">7</strong><small>angelegt</small></article>
+          <article class="stat"><span>Prüfungen</span><strong id="stat-entries">0</strong><small>im Tagebuch</small></article>
+          <article class="stat"><span>Mängel</span><strong id="stat-issues">0</strong><small>noch offen</small></article>
+        </section>
+        <nav class="tabs" aria-label="Hauptbereiche"><button type="button" class="tab active" data-tab="map">Karte</button><button type="button" class="tab" data-tab="routes">Touren</button><button type="button" class="tab" data-tab="diary">Tagebuch</button><button type="button" class="tab" data-tab="settings">Einstellungen</button></nav>
+        <section id="map-view" class="view">
+          <div class="section-heading"><div><h2>Meine Streckenkarte</h2><p class="muted">KML aus My Maps · Routen einzeln ein- und ausblenden.</p></div><button type="button" class="btn outline small" id="map-zoom">↗ Alle sichtbaren Touren</button></div>
+          <div class="map-layout">
+            <div class="map-container"><div id="pate-map" class="pate-map" role="region" aria-label="Streckenkarte Senden"></div><div id="map-placeholder" class="map-placeholder" hidden>Bitte zuerst unter Einstellungen deine KML-Datei importieren.</div></div>
+            <aside class="map-sidebar">
+              <div class="map-sidebar-head"><strong>Alle Touren</strong><span id="map-count" class="muted">0 / 7</span></div>
+              <p class="smallnote selection-help">Beliebig viele Touren anklicken. Jede Auswahl wird auf der Karte sichtbar.</p>
+              <div id="map-route-picker" class="map-picker"></div>
+              <div class="selection-controls"><button type="button" class="text-btn" id="selection-all">Alle auswählen</button><button type="button" class="text-btn" id="selection-none">Auswahl aufheben</button></div>
+              <section class="selection-summary" aria-labelledby="selection-title">
+                <div class="selection-heading"><strong id="selection-title">Ausgewählte Touren</strong><span id="selection-count" class="smallnote">0 gewählt</span></div>
+                <p id="selection-summary" class="combo-summary">Noch keine Tour ausgewählt.</p>
+                <p id="selection-warning" class="smallnote" aria-live="polite"></p>
+                <div class="combo-buttons"><a class="btn primary" id="selection-gpx" hidden href="#">↓ GPX für Komoot</a><button type="button" class="btn primary" id="selection-start" disabled>🚲 Tour starten · Mängel prüfen</button><button type="button" class="btn outline" id="selection-diary" disabled>＋ Kontrollfahrt dokumentieren</button><button type="button" class="btn outline" id="selection-zoom" disabled>↗ Auswahl auf Karte anzeigen</button></div>
+                <div id="selection-navigation" class="selection-navigation"></div>
+              </section>
+              <p class="map-hint">Die Auswahl steuert die Karte, den GPX-Export und die Touren einer neuen Streckenprüfung. Die Linien kommen ausschließlich aus deiner KML – keine erfundenen Wege.</p>
+            </aside>
+          </div>
+          <details class="reference-map"><summary>Google My Maps – Originalkarte als Vergleich anzeigen</summary><p class="muted">Diese Ansicht zeigt die My-Maps-Ebenen, aber nicht automatisch dieselbe Auswahl wie oben.</p><iframe src="https://www.google.com/maps/d/embed?mid=1fJAjiQpdqoh6MZ5s0dh1wRHCcR69G0o&amp;hl=de&amp;ehbc=2E312F" title="My Maps Originalkarte der Radwegpaten-Touren" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></details>
+        </section>
+        <section id="routes-view" class="view">
+          <div class="section-heading"><div><h2>Deine Touren</h2><p class="muted">Die Kartendaten werden zentral per KML eingespielt.</p></div></div>
+          <div id="route-list" class="route-grid"></div>
+        </section>
+        <section id="diary-view" class="view" hidden>
+          <div class="section-heading"><div><h2>Tourentagebuch</h2><p class="muted">Kontrollfahrten mit mehreren Strecken und einzelnen Mängelpositionen.</p></div><button class="btn primary" id="new-entry-diary">＋ Eintrag</button></div>
+          <div class="filter-bar"><label class="sr-only" for="filter-tour">Tour filtern</label><select id="filter-tour"><option value="">Alle Touren</option></select><label class="sr-only" for="filter-status">Zustand filtern</label><select id="filter-status"><option value="">Alle Zustände</option><option value="offen">Mit offenen Mängeln</option><option value="mangel">Mit Mängeln (auch erledigte)</option><option value="gut">Ohne Mängel</option></select></div>
+          <div id="diary-list" class="diary-list"></div>
+          <div class="actions-row"><button class="btn outline" id="export-csv">⬇ Tagebuch als CSV</button></div>
+        </section>
+        <section id="settings-view" class="view" hidden>
+          <div class="section-heading"><div><h2>Einstellungen</h2><p class="muted">KML-Import, Zuordnung und Sicherung.</p></div></div>
+          <div class="settings-grid">
+            <article class="surface"><h3>KML-Strecken importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → möglichst <b>KML</b> wählen und die vollständige Karte exportieren. Die Datei hier hochladen. Vorhandene Tagebucheinträge bleiben erhalten.</p>
+              <form id="kml-form"><label>KML-Datei auswählen<input type="file" id="kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" required></label><button type="submit" class="btn primary">↑ KML importieren</button></form>
+              <p id="map-import-info" class="smallnote">Noch kein Import.</p><div class="rule"></div>
+              <h3>Ebenen den Touren zuordnen</h3><p class="muted">Wenn My Maps andere Ebenennamen verwendet, kannst du sie hier zuordnen. Jede Ebene enthält eine oder mehrere Linien.</p><div id="source-assignments"></div><button type="button" class="btn outline" id="save-assignments">Zuordnung speichern</button>
+              <div class="rule"></div><h3>Tourennamen und Details</h3><div id="settings-routes"></div>
+              </article>
+            <article class="surface"><h3>Datensicherung</h3><p class="muted">Lade Touren, Prüfungen und Einzelmängel als JSON-Datei herunter. Die Fotos sind darin nicht enthalten: Diese müssen separat auf dem Webspace gesichert werden.</p><a href="api.php?action=export" class="btn outline">⬇ JSON-Sicherung</a><div class="rule"></div><h3>Passwort ändern</h3><form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline">Passwort ändern</button></form><div class="rule"></div><button type="button" class="btn subtle" id="logout-button">Abmelden</button></article>
+          </div><p class="smallnote">Mobil zum Homescreen: In Safari „Teilen → Zum Home-Bildschirm“ oder in Chrome „Installieren/Zum Startbildschirm“ auswählen. Für Änderungen und Foto-Uploads ist eine Internetverbindung notwendig.</p>
+        </section>
+      </main>
+      <footer>Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</footer>
+      <button type="button" class="mobile-add" id="mobile-add" aria-label="Neuen Eintrag anlegen">＋</button>
+    </section>
+  </div>
+  <dialog id="start-dialog" class="modal start-modal" aria-labelledby="start-heading"><div class="modal-content">
+    <div class="modal-heading"><div><p class="eyebrow">KONTROLLFAHRT</p><h2 id="start-heading">Tour starten</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen">×</button></div>
+    <p id="start-tour-label" class="muted"></p>
+    <section class="start-defects" aria-label="Vorhandene offene Mängel"><div class="start-defects-heading"><h3>Noch offene Mängel</h3><span id="start-issue-count" class="issue-counter">0</span></div><div id="start-issue-list" class="start-issue-list" aria-live="polite"></div></section><div id="start-navigation" class="start-navigation" aria-label="Navigation"></div>
+    <p class="smallnote">Die Liste enthält bestehende Mängel dieser Touren aus früheren Prüfungen. Ein erledigter Mangel bleibt im Tagebuch dokumentiert und verschwindet nur aus der offenen Liste.</p>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Schließen</button><button type="button" class="btn primary" id="start-diary">＋ Kontrollfahrt dokumentieren</button></div>
+  </div></dialog>
+  <dialog id="entry-dialog" class="modal"><form id="entry-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow">RADWEGPATE</p><h2 id="entry-heading">Neue Streckenprüfung</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen">×</button></div>
+    <input type="hidden" name="id" id="entry-id">
+    <div class="entry-date-row"><label for="entry-date">Gefahren / geprüft am<input type="date" id="entry-date" name="date" required></label></div>
+    <div class="entry-routes-wrapper"><span class="form-label">Kontrollierte Touren (mehrere möglich)</span><div id="entry-routes" class="entry-route-options" role="group" aria-label="Kontrollierte Touren"></div><small class="smallnote">Es können alle sieben Touren in einer Kontrollfahrt dokumentiert werden. Jede Tour ist anschließend im Tagebuch filterbar.</small></div>
+    <label>Allgemeine Notiz zur Kontrollfahrt<textarea name="notes" id="entry-notes" maxlength="5000" rows="3" placeholder="Wetter, allgemeiner Zustand, besondere Beobachtungen …"></textarea></label>
+    <div class="gps-row"><span id="gps-label" class="muted">GPS-Position der Kontrollfahrt: nicht erfasst</span><button type="button" class="btn outline small" id="get-position">⌖ Position erfassen</button><button type="button" class="link-btn" id="clear-position" hidden>Entfernen</button></div>
+    <div class="issues-header"><div><h3>Einzelne Mängel / Beobachtungen</h3><p class="smallnote">Jeder Mangel ist eine eigene Zeile mit Tour, Art, Ort, Status, Notiz, Position und Fotos.</p></div><button type="button" class="btn outline small" id="add-issue">＋ Mangelzeile</button></div>
+    <div id="entry-issues" class="issue-rows"></div>
+    <label class="upload-field">📷 Allgemeine Fotos zur Kontrollfahrt <small>(optional, max. 8; JPG/PNG/WebP). Mängelfotos bitte direkt in die Mangelzeile.</small><input type="file" id="entry-photos" name="photos" accept="image/*" multiple></label>
+    <div id="existing-photos" class="photos-row"></div><div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary" id="save-entry">Eintrag speichern</button></div>
+  </form></dialog>
+  <dialog id="route-dialog" class="modal"><form id="route-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow">TOURDETAILS</p><h2>Tour bearbeiten</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen">×</button></div>
+    <input type="hidden" name="id" id="route-id"><label>Name der Tour<input id="route-name" name="name" required maxlength="90"></label><label>Beschreibung / Bereich<input id="route-area" name="area" maxlength="180"></label><label>Streckenlänge in km (optional, nur wenn bekannt)<input type="number" id="route-km" min="0.1" max="999" step="0.1" inputmode="decimal" placeholder="noch ungeprüft"></label>
+    <p class="muted">Routenverläufe stammen aus deiner KML. Änderungen an der Route bitte in My Maps vornehmen und anschließend neu importieren.</p>
+    <label>Hinweis / Stand der Route<textarea id="route-note" rows="3" maxlength="1000"></textarea></label>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>
+  </form></dialog>
+  <div role="status" id="toast" class="toast" aria-live="polite" hidden></div>
+  <script src="assets/vendor/leaflet-1.9.4/leaflet.js" defer></script>
+  <script src="assets/app.js?v=<?= $v ?>" defer></script>
+</body>
+</html>

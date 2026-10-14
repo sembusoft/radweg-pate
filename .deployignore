@@ -1,0 +1,13 @@
+# Ausschlüsse für rsync beim Deployment (Quelle ist public/).
+# Bewusst getrennt von .gitignore: hier steht auch, was auf dem SERVER liegt
+# und dort bleiben muss. Mit --delete würde rsync sonst alles entfernen,
+# was lokal fehlt – diese Liste schützt davor.
+
+# ── Bleibt auf dem Server, niemals überschreiben oder löschen ──
+/config.php
+/.user.ini
+/radweg-pate_private/
+/radwegpate_private/
+
+# ── Wird bewusst nicht ausgeliefert ──
+/config.example.php

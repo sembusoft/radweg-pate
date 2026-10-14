@@ -1,0 +1,82 @@
+name: Tests
+
+# Läuft bei jedem Push und Pull Request auf main. Der Deploy startet davon
+# unabhängig nur von Hand (deploy.yml) – Muster wie bei fightReg.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.1 = Mindestversion laut Code (never, readonly-freie Syntax), 8.3 = Ziel auf all-inkl.
+        php: ['8.1', '8.3']
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: PHP ${{ matrix.php }} einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, fileinfo, gd
+          coverage: none
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: PHP-Syntax
+        run: |
+          set -e
+          for f in public/*.php; do php -l "$f"; done
+
+      - name: Statische Prüfungen (Version, CSP, Service Worker, JS-Syntax)
+        run: node scripts/check.mjs
+
+      - name: Testserver starten
+        run: |
+          set -e
+          DATA="$RUNNER_TEMP/radweg-data"
+          TOKEN="$(php -r 'echo bin2hex(random_bytes(16));')"
+          echo "DATA_DIR=$DATA" >> "$GITHUB_ENV"
+          echo "INSTALL_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          cat > public/config.php <<EOF
+          <?php
+          declare(strict_types=1);
+          define('APP_INSTALL_TOKEN', '$TOKEN');
+          define('APP_DATA_DIR', '$DATA');
+          define('APP_MAX_UPLOAD_MB', 8);
+          EOF
+          (cd public && php -S 127.0.0.1:8080 > "$RUNNER_TEMP/php-server.log" 2>&1 &)
+          for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api.php?action=status >/dev/null && break; sleep 0.5; done
+
+      - name: Rauchtest (Einrichtung, KML, Kontrollfahrt, Foto, GPX, Passwort)
+        env:
+          BASE_URL: http://127.0.0.1:8080
+        run: node scripts/smoke-test.mjs
+
+      - name: PHP-Warnungen im Serverprotokoll?
+        if: always()
+        run: |
+          if grep -iE "PHP (Warning|Notice|Deprecated|Fatal)" "$RUNNER_TEMP/php-server.log"; then
+            echo "::error::PHP hat Warnungen ausgegeben (siehe oben)."
+            exit 1
+          fi
+          echo "Keine PHP-Warnungen."
+
+      - name: Serverprotokoll bei Fehlschlag
+        if: failure()
+        run: tail -n 100 "$RUNNER_TEMP/php-server.log" || true

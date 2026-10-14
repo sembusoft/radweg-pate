@@ -1,0 +1,203 @@
+name: Deploy (radweg-pate.de)
+
+# Startet ausschließlich von Hand: Actions → Deploy → Run workflow.
+# Aufbau wie bei fightReg: Bestätigungswort, Branch-Prüfung, Probelauf mit
+# vollständiger Vorschau, rsync über SSH auf all-inkl, danach Gegenproben.
+#
+# Ausgeliefert wird NUR der Ordner public/. Dokumente, Skripte, Workflows und
+# projekt_dokumente/ liegen außerhalb und können nicht auf den Server geraten.
+#
+# Einrichtung (einmalig, Repository → Settings → Environments → production):
+#   Secrets:   SSH_HOST  (z. B. w0XXXXXX.kasserver.com)
+#              SSH_USER  (z. B. ssh-w0XXXXXX)
+#              SSH_KEY   (privater Schlüssel, nur für dieses Deployment)
+#   Variablen: REMOTE_PATH (z. B. /www/htdocs/w0XXXXXX/radweg-pate.de)
+#              APP_URL     (https://radweg-pate.de)
+#              SSH_PORT    (optional, Vorgabe 22)
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Zum Bestätigen exakt "deploy" eintippen'
+        required: true
+        default: ''
+      branch:
+        description: 'Branch, der ausgeliefert wird – muss zu "Use workflow from" passen'
+        required: true
+        default: 'main'
+      dry_run:
+        description: 'Probelauf – zeigt nur, was übertragen und gelöscht würde'
+        type: boolean
+        default: false
+      delete_removed:
+        description: 'Dateien, die im Repository nicht mehr existieren, auf dem Server löschen (mit Bedacht)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    # Nur Lesen: checkout und die Abfrage des Teststatus. Alles andere läuft über SSH.
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Bestätigung und Branch prüfen
+        run: |
+          if [ "${{ inputs.confirm }}" != "deploy" ]; then
+            echo "::error::Bestätigung fehlt. Im Feld 'confirm' exakt 'deploy' eintippen."
+            exit 1
+          fi
+          if [ "${{ inputs.branch }}" != "${{ github.ref_name }}" ]; then
+            echo "::error::Branch stimmt nicht: im Feld steht '${{ inputs.branch }}', der Lauf kommt aus '${{ github.ref_name }}'. Oben unter 'Use workflow from' den richtigen Branch wählen."
+            exit 1
+          fi
+          if [ -z "${{ vars.REMOTE_PATH }}" ]; then
+            echo "::error::Variable REMOTE_PATH fehlt im Environment 'production'."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+
+      - name: Stand ermitteln
+        id: stand
+        run: |
+          VERSION=$(sed -n "s/.*APP_VERSION *= *'\([^']*\)'.*/\1/p" public/version.php)
+          SW=$(sed -n "s/.*CACHE_NAME *= *'\([^']*\)'.*/\1/p" public/sw.js)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sw=$SW" >> "$GITHUB_OUTPUT"
+          {
+            if [ "${{ inputs.dry_run }}" = "true" ]; then echo "## PROBELAUF – es wird nichts verändert"; else echo "## ECHTER LAUF"; fi
+            echo "Version **$VERSION** · Commit \`${GITHUB_SHA:0:7}\` · Branch \`${{ github.ref_name }}\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "radwegpate-$VERSION" != "$SW" ]; then
+            echo "::error::version.php ($VERSION) und sw.js ($SW) passen nicht zusammen."
+            exit 1
+          fi
+
+      - name: Teststatus dieses Commits
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LAUF=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?head_sha=${{ github.sha }}&per_page=1" \
+            --jq '.workflow_runs[0] | [.status, .conclusion, .run_number, .html_url] | @tsv' 2>/dev/null || true)
+          echo "### Tests" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$LAUF" ]; then
+            echo "Kein Testlauf zu diesem Commit gefunden." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Kein Testergebnis für diesen Commit."
+            exit 0
+          fi
+          STATUS=$(echo "$LAUF" | cut -f1); ERGEBNIS=$(echo "$LAUF" | cut -f2)
+          NUMMER=$(echo "$LAUF" | cut -f3); URL=$(echo "$LAUF" | cut -f4)
+          if [ "$STATUS" != "completed" ]; then
+            echo "Lauf [#$NUMMER]($URL) läuft noch." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Der Testlauf zu diesem Commit läuft noch."
+          elif [ "$ERGEBNIS" = "success" ]; then
+            echo "Lauf [#$NUMMER]($URL): **grün**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Lauf [#$NUMMER]($URL): **$ERGEBNIS**" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Testlauf #$NUMMER ist $ERGEBNIS – $URL"
+          fi
+
+      - name: SSH einrichten
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ vars.SSH_PORT || 22 }}" -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          cat > ~/.ssh/config <<EOF
+          Host deploy
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            Port ${{ vars.SSH_PORT || 22 }}
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ServerAliveInterval 30
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Verbindung und Zielverzeichnis prüfen
+        run: |
+          REMOTE="${{ vars.REMOTE_PATH }}"
+          echo "Zielverzeichnis: $REMOTE"
+          ssh deploy "test -d '$REMOTE'" || { echo "::error::Zielverzeichnis $REMOTE existiert nicht."; exit 1; }
+          if ! ssh deploy "test -f '$REMOTE/config.php'"; then
+            MSG="config.php fehlt auf dem Server. Vor dem ersten Deploy einmalig anlegen (Vorlage public/config.example.php, siehe docs/DEPLOY.md)."
+            if [ "${{ inputs.dry_run }}" = "true" ]; then echo "::warning::$MSG"; else echo "::error::$MSG"; exit 1; fi
+          fi
+          echo -n 'PHP auf dem Server: '; ssh deploy "php -r 'echo PHP_VERSION;'" || true; echo
+
+      # Immer zuerst zeigen, was passieren würde. --checksum vergleicht den Inhalt:
+      # Git kennt keine Zeitstempel, ohne -c hielte rsync jede Datei für geändert.
+      - name: Dateiabgleich – Vorschau
+        run: |
+          set -e
+          rsync -azc --itemize-changes --dry-run --delete \
+            --exclude-from='.deployignore' \
+            public/ deploy:'${{ vars.REMOTE_PATH }}/' | tee /tmp/preview.txt
+          grep '^deleting ' /tmp/preview.txt > /tmp/del.txt || true
+          grep '^<f' /tmp/preview.txt > /tmp/upd.txt || true
+          {
+            echo "### Vorschau"
+            echo "- Dateien mit neuem Inhalt: **$(wc -l < /tmp/upd.txt)**"
+            echo '```'; cut -c13- /tmp/upd.txt; echo '```'
+            echo "- Auf dem Server, aber nicht im Repository: **$(wc -l < /tmp/del.txt)** – gelöscht nur mit \`delete_removed\`$( [ '${{ inputs.delete_removed }}' = 'true' ] && echo ' (gesetzt)' )"
+            if [ -s /tmp/del.txt ]; then echo '```'; cat /tmp/del.txt; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dateien übertragen
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          set -e
+          rsync -azc --itemize-changes --chmod=D755,F644 \
+            ${{ inputs.delete_removed && '--delete' || '' }} \
+            --exclude-from='.deployignore' \
+            public/ deploy:'${{ vars.REMOTE_PATH }}/'
+          echo "Dateien übertragen: ja" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Gegenproben ──────────────────────────────────────────────────
+      - name: Ausgeliefert? sw.js und API gegenprüfen
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          URL="${{ vars.APP_URL }}"; URL="${URL%/}"
+          [ -z "$URL" ] && URL='https://radweg-pate.de'
+          FEHLER=0
+
+          CODE=$(curl -sL --max-redirs 3 -o /dev/null -w '%{http_code}' --max-time 20 "$URL/" || echo 000)
+          echo "**Startseite:** HTTP $CODE" >> "$GITHUB_STEP_SUMMARY"
+          case "$CODE" in 2*) ;; *) echo "::error::Startseite liefert HTTP $CODE"; FEHLER=1;; esac
+
+          GELIEFERT=$(curl -sL --max-time 20 "$URL/sw.js" | sed -n "s/.*CACHE_NAME *= *'\([^']*\)'.*/\1/p" | head -1)
+          echo "**sw.js:** \`${GELIEFERT:-nicht lesbar}\` (erwartet \`${{ steps.stand.outputs.sw }}\`)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GELIEFERT" != "${{ steps.stand.outputs.sw }}" ]; then
+            echo "::error::Server liefert '$GELIEFERT' statt '${{ steps.stand.outputs.sw }}' – nichts angekommen oder REMOTE_PATH zeigt nicht auf $URL."
+            FEHLER=1
+          fi
+
+          STATUS=$(curl -sL --max-time 20 "$URL/api.php?action=status" || true)
+          echo "**api.php?action=status:** \`$(echo "$STATUS" | head -c 200)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "$STATUS" | grep -q "\"version\":\"${{ steps.stand.outputs.version }}\"" \
+            || { echo "::error::API antwortet nicht mit Version ${{ steps.stand.outputs.version }} (config.php, Datenordner oder PHP-Version prüfen)."; FEHLER=1; }
+
+          CFG=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/config.php" || echo 000)
+          echo "**config.php von außen:** HTTP $CFG (erwartet 403)" >> "$GITHUB_STEP_SUMMARY"
+          [ "$CFG" = "403" ] || echo "::warning::config.php antwortet mit $CFG statt 403 – greift die .htaccess?"
+
+          exit $FEHLER
+
+      - name: Aufräumen
+        if: always()
+        run: rm -f ~/.ssh/id_deploy
+
+      - name: Hinweis bei Probelauf
+        if: ${{ inputs.dry_run == true }}
+        run: echo "::notice::Probelauf – es wurde nichts übertragen. Zum echten Deployment den Haken bei dry_run entfernen."

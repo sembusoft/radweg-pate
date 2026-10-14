@@ -1,0 +1,24 @@
+# Radwegpate – Apache-Regeln (all-inkl)
+
+Options -Indexes
+
+# Konfiguration und Hilfsdateien nie direkt ausliefern
+<FilesMatch "^(config(\.example)?\.php|version\.php|\..*)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    # Service Worker und Manifest immer frisch prüfen, sonst bleibt eine alte
+    # App-Version auf dem Handy hängen.
+    <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+    # Versionierte Assets (?v=...) dürfen lange im Cache bleiben.
+    <FilesMatch "^(?!sw\.js$).+\.(css|js|png|svg)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>
