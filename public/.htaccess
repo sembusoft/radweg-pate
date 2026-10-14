@@ -12,6 +12,14 @@ RedirectMatch 404 "(?i)^/(.*/)?radwegpate_private(/|$)"
     Require all denied
 </FilesMatch>
 
+# dl.<domain> (Download-Seite für GPX aus der iPhone-App) liefert nur gpx.php, api.php und Assets;
+# alles andere leitet auf die Hauptdomain um. api.php selbst lässt dort nur GPX mit Schlüssel zu.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^dl\.(.+)$ [NC]
+    RewriteRule !^(gpx\.php|api\.php|assets/.*)$ https://%1/ [R=302,L]
+</IfModule>
+
 <IfModule mod_headers.c>
     # Service Worker und Manifest immer frisch prüfen, sonst bleibt eine alte
     # App-Version auf dem Handy hängen.

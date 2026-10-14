@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// GPX-Download-Seite für die iPhone-Homescreen-App (TEST).
+// GPX-Download-Seite für die iPhone-Homescreen-App.
 // Wird über https://dl.radweg-pate.de/gpx.php aufgerufen: anderer Host = außerhalb der App.
 // iOS öffnet die Seite deshalb in einem eigenen Browserfenster mit „Fertig“-Knopf;
 // von dort lässt sich die GPX an Naviki übergeben und danach in die App zurückkehren.
@@ -42,9 +42,9 @@ $e = fn(string $s) => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
   <a class="btn primary full" href="api.php?action=gpx&amp;<?= $e($query) ?>&amp;save=1"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> GPX herunterladen</a>
   <a class="btn outline full" href="api.php?action=gpx&amp;<?= $e($query) ?>"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#external-link"/></svg> GPX direkt öffnen</a>
   <ol class="smallnote dl-steps">
-    <li>„GPX herunterladen“ tippen (oder „direkt öffnen“).</li>
-    <li>In der Vorschau über <strong>Teilen / Öffnen in …</strong> Naviki wählen.</li>
-    <li>Zurück: oben auf <strong>„Fertig“</strong> tippen.</li>
+    <li>„GPX herunterladen“ oder „GPX direkt öffnen“ tippen.</li>
+    <li>Über <strong>„In … öffnen“</strong> Naviki wählen.</li>
+    <li>Zurück zur App: oben links <strong>schließen</strong> (X bzw. Zurück).</li>
   </ol>
 <?php else: ?>
   <h1>Link ungültig</h1>

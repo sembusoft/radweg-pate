@@ -193,6 +193,8 @@ function delete_photo_files(string $file, string $id): void {
 
 $action=(string)($_GET['action']??'status');
 $method=(string)($_SERVER['REQUEST_METHOD']??'GET');
+// dl.<host> dient nur der GPX-Download-Seite (gpx.php): dort gibt es nur status und gpx (mit Schlüssel).
+if (str_starts_with(strtolower((string)($_SERVER['HTTP_HOST']??'')),'dl.') && !in_array($action,['status','gpx'],true)) fail('Nicht verfügbar.',404);
 $installed=is_file(storage().'/install.json');
 
 if ($action==='status' && $method==='GET') {

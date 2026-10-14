@@ -170,15 +170,6 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
       <form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
     </section>
     <div class="rule"></div>
-    <section class="prefs-section" id="gpx-test"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Test: GPX über dl.radweg-pate.de</h3>
-      <p class="smallnote">Vorübergehend. Öffnet eine Download-Seite außerhalb der App – mit „Fertig“-Knopf zum Zurückkehren.</p>
-      <div class="gpx-test-grid">
-        <a class="btn outline small" id="gpx-test-a" href="#">A · gleiches Fenster</a>
-        <a class="btn outline small" id="gpx-test-b" href="#" target="_blank" rel="noopener">B · neues Fenster</a>
-      </div>
-      <p class="smallnote" id="gpx-test-file"></p>
-    </section>
-    <div class="rule"></div>
     <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>
     <p class="smallnote prefs-version">Radwegpate · Version <?= htmlspecialchars(APP_VERSION) ?></p>
   </div></dialog>

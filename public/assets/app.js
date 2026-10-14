@@ -384,20 +384,6 @@ function setupAppearance(){
  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
  applyAppearance();
 }
-// --- Vorübergehender Test: GPX über die Download-Seite auf dl.<host> (außerhalb der App → iOS zeigt „Fertig“).
-function dlPageBase(){
- const h=location.hostname;
- if(h==='localhost'||/^[\d.]+$/.test(h)||h.startsWith('[')||h.startsWith('dl.'))return new URL('gpx.php',location.href).href;
- return 'https://dl.'+h.replace(/^www\./,'')+'/gpx.php';
-}
-function gpxTestPrepare(){
- const route=state.routes.find(r=>routeLines(r.id).length);
- const info=$('#gpx-test-file');
- if(!route||!state.gpxToken){info.textContent='Keine Tour mit Linien oder kein GPX-Schlüssel.';return;}
- const url=dlPageBase()+'?id='+encodeURIComponent(route.id)+'&dl='+encodeURIComponent(state.gpxToken);
- $('#gpx-test-a').href=url;$('#gpx-test-b').href=url;
- info.textContent='Tour '+route.id+' → '+new URL(url).host;
-}
 function setupEvents(){
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
@@ -408,7 +394,7 @@ function setupEvents(){
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
- $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();gpxTestPrepare();});
+ $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
  $('#new-entry-diary').addEventListener('click',()=>openTripStart([]));
  // Plus in der Tab-Leiste: auf der Karte mit den gewählten Touren vorbelegt.
  $('#mobile-add').addEventListener('click',()=>{
@@ -496,9 +482,23 @@ function kmLine(points){let km=0;for(let i=1;i<points.length;i++){
 function routeLineKm(id){return routeLines(id).reduce((n,line)=>n+kmLine(line),0);}
 // GPX-Links öffnen in einem eigenen Fenster (iOS-Homescreen-App: Vorschau mit „Fertig“ und
 // „In Naviki öffnen“). Der Schlüssel dl erlaubt dort den Download ohne die Cookies der App.
-const gpxKey=()=>state.gpxToken?'&dl='+encodeURIComponent(state.gpxToken):'';
-function mapDownloadUrl(id){return 'api.php?action=gpx&id='+encodeURIComponent(id)+gpxKey();}
-function comboDownloadUrl(ids){return 'api.php?action=gpx&ids='+encodeURIComponent(ids.join(','))+gpxKey();}
+// GPX-Links. iPhone-Homescreen-App: Eine Datei-Vorschau innerhalb der App hat keinen Weg zurück
+// (WebKit-Fehler 236943). Deshalb dort über die Download-Seite gpx.php auf dl.<host> – anderer Host =
+// außerhalb der App, iOS öffnet sie in einem eigenen Fenster mit Schließen-Knopf; „Öffnen in …“ → Naviki.
+// Dieses Fenster hat die Anmeldung nicht: der zeitlich begrenzte GPX-Schlüssel (dl=) erlaubt nur den GPX-Download.
+// Alle anderen Browser: direkter Download mit der normalen Anmeldung.
+const iosStandalone=()=>navigator.standalone===true;
+function dlPageBase(){
+ const h=location.hostname;
+ if(h==='localhost'||/^[\d.]+$/.test(h)||h.startsWith('[')||h.startsWith('dl.'))return new URL('gpx.php',location.href).href;
+ return 'https://dl.'+h.replace(/^www\./,'')+'/gpx.php';
+}
+function gpxUrl(query){
+ if(iosStandalone()&&state.gpxToken)return dlPageBase()+'?'+query+'&dl='+encodeURIComponent(state.gpxToken);
+ return 'api.php?action=gpx&'+query;
+}
+function mapDownloadUrl(id){return gpxUrl('id='+encodeURIComponent(id));}
+function comboDownloadUrl(ids){return gpxUrl('ids='+ids.map(encodeURIComponent).join(','));}
 function startCoordinate(id){let lines=routeLines(id);return lines[0]?.[0]||null;}
 function endCoordinate(id){let lines=routeLines(id);return lines[lines.length-1]?.at(-1)||null;}
 // Das Ende jeder Hin-und-Rueck-KML ist der START und darf NIE als Gemeindegrenze dienen.

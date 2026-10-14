@@ -86,3 +86,12 @@ Vor dem ersten Deploy den Ordner trotzdem einmal per FTP sichern.
 - [ ] Karte mit OSM-Kacheln, farbige Punkte in der Tourenliste
 - [ ] Kontrollfahrt mit Mangel + Foto anlegen, Mangel als erledigt markieren
 - [ ] GPX-Export einer Tour
+
+## Subdomain dl.radweg-pate.de (GPX für die iPhone-App)
+
+- In all-inkl als Subdomain mit **demselben Zielverzeichnis** wie radweg-pate.de anlegen, SSL (Let's Encrypt) an.
+- Zweck: Die iPhone-Homescreen-App öffnet GPX über `https://dl.radweg-pate.de/gpx.php?id=…&dl=<Schlüssel>`.
+  Anderer Host = außerhalb der App → iOS zeigt ein eigenes Fenster mit Schließen-Knopf; „In … öffnen“ → Naviki.
+  (Eine Datei-Vorschau innerhalb der App hätte keinen Weg zurück, WebKit-Fehler 236943.)
+- `.htaccess` leitet auf dl. alles außer `gpx.php`, `api.php` und `assets/` auf die Hauptdomain um;
+  `api.php` erlaubt dort nur `status` und `gpx` (mit Schlüssel).

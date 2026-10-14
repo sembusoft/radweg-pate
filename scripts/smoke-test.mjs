@@ -14,6 +14,7 @@ globalThis.fetch = async (...args) => {
   return new Response(r.status === 204 || r.status === 304 ? null : body, { status: r.status, statusText: r.statusText, headers: r.headers });
 };
 
+import http from 'node:http';
 const BASE = (process.env.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
 const TOKEN = process.env.INSTALL_TOKEN || '';
 const DATA_DIR = process.env.DATA_DIR || '';
@@ -128,6 +129,11 @@ async function main() {
   anon = await fetch(BASE + '/gpx.php?id=99&dl=<x>');
   const badHtml = await anon.text();
   check(badHtml.includes('Link ungültig') && !badHtml.includes('<x>'), 'Download-Seite lehnt ungültige Parameter ab');
+  const viaDl = path => new Promise((ok, no) => { const u = new URL(BASE + path);
+    http.get({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, headers: { Host: 'dl.example.test' } }, res => { res.resume(); ok(res.statusCode); }).on('error', no); });
+  check(await viaDl('/api.php?action=gpx&id=01&dl=' + boot.data.gpxToken) === 200, 'dl.-Host: GPX mit Schlüssel');
+  check(await viaDl('/api.php?action=login') === 404, 'dl.-Host: andere API-Aktionen gesperrt');
+  check(await viaDl('/api.php?action=gpx&id=01') === 401, 'dl.-Host: GPX ohne Schlüssel → 401');
   anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + 'f'.repeat(32));
   check(anon.status === 401, 'GPX mit falschem Schlüssel → 401');
   anon = await fetch(BASE + '/api.php?action=bootstrap&dl=' + boot.data.gpxToken);
