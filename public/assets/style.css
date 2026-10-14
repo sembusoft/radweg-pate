@@ -604,6 +604,9 @@ body:has(#trip-view:not([hidden])) .toast { bottom: calc(var(--nav-h) + 84px + e
   .bottom-nav .tab.active { outline: 2px solid Highlight; }
 }
 
-/* Vorübergehender GPX-Test im Zahnrad-Blatt */
+/* Vorübergehender GPX-Test im Zahnrad-Blatt + Download-Seite gpx.php */
 .gpx-test-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
-#gpx-test-status { min-height: 1.5em; word-break: break-word; }
+.dl-page { min-height: 100vh; padding: 24px 16px; background: var(--bg); }
+.dl-card { max-width: 480px; margin: 0 auto; display: grid; gap: 12px; padding: 20px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.dl-card h1 { font-size: 1.375rem; margin: 0; }
+.dl-steps { margin: 4px 0 0; padding-left: 1.25rem; }

@@ -170,16 +170,13 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
       <form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
     </section>
     <div class="rule"></div>
-    <section class="prefs-section" id="gpx-test"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Test: GPX an App übergeben</h3>
-      <p class="smallnote">Vorübergehend. Bitte in der Homescreen-App jeden Knopf antippen und schauen, ob Naviki im Teilen-Menü erscheint.</p>
-      <p class="smallnote" id="gpx-test-file">GPX wird vorbereitet …</p>
+    <section class="prefs-section" id="gpx-test"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Test: GPX über dl.radweg-pate.de</h3>
+      <p class="smallnote">Vorübergehend. Öffnet eine Download-Seite außerhalb der App – mit „Fertig“-Knopf zum Zurückkehren.</p>
       <div class="gpx-test-grid">
-        <button type="button" class="btn outline small" data-gpx-type="">1 · ohne Typ</button>
-        <button type="button" class="btn outline small" data-gpx-type="application/octet-stream">2 · octet-stream</button>
-        <button type="button" class="btn outline small" data-gpx-type="application/gpx+xml">3 · gpx+xml</button>
-        <button type="button" class="btn outline small" data-gpx-type="text/xml">4 · text/xml</button>
+        <a class="btn outline small" id="gpx-test-a" href="#">A · gleiches Fenster</a>
+        <a class="btn outline small" id="gpx-test-b" href="#" target="_blank" rel="noopener">B · neues Fenster</a>
       </div>
-      <p class="smallnote" id="gpx-test-status" aria-live="polite"></p>
+      <p class="smallnote" id="gpx-test-file"></p>
     </section>
     <div class="rule"></div>
     <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>

@@ -27,7 +27,7 @@ missing.length ? fail('sw.js SHELL verweist auf fehlende Dateien: ' + missing.jo
 const index = read('index.php');
 /<script[^>]+src="https?:/.test(index) || /<link[^>]+stylesheet[^>]+href="https?:/.test(index)
   ? fail('index.php lädt Skripte oder Stile von externen Servern') : ok('index.php: nur lokale Skripte/Stile');
-for (const f of ['index.php', 'assets/app.js']) {
+for (const f of ['index.php', 'gpx.php', 'assets/app.js']) {
   const src = read(f);
   /\sstyle="/.test(src) ? fail(`${f}: style="…"-Attribut – wird von der CSP blockiert, CSS-Klasse verwenden`) : ok(`${f}: keine Inline-Styles`);
 }

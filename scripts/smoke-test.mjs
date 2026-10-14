@@ -120,6 +120,14 @@ async function main() {
   let anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + boot.data.gpxToken);
   check(anon.status === 200 && (anon.headers.get('content-type') || '').includes('gpx'), 'GPX mit Schlüssel ohne Anmeldung (eigenes Browserfenster)');
   check((anon.headers.get('content-disposition') || '').startsWith('inline'), 'GPX über Schlüssel-Link wird inline ausgeliefert');
+  anon = await fetch(BASE + '/api.php?action=gpx&id=01&save=1&dl=' + boot.data.gpxToken);
+  check((anon.headers.get('content-disposition') || '').startsWith('attachment'), 'GPX über Schlüssel-Link mit save=1 als Datei');
+  anon = await fetch(BASE + '/gpx.php?id=01&dl=' + boot.data.gpxToken);
+  const dlHtml = await anon.text();
+  check(anon.status === 200 && dlHtml.includes('action=gpx&amp;id=01&amp;dl=' + boot.data.gpxToken + '&amp;save=1'), 'Download-Seite gpx.php mit Link');
+  anon = await fetch(BASE + '/gpx.php?id=99&dl=<x>');
+  const badHtml = await anon.text();
+  check(badHtml.includes('Link ungültig') && !badHtml.includes('<x>'), 'Download-Seite lehnt ungültige Parameter ab');
   anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + 'f'.repeat(32));
   check(anon.status === 401, 'GPX mit falschem Schlüssel → 401');
   anon = await fetch(BASE + '/api.php?action=bootstrap&dl=' + boot.data.gpxToken);
