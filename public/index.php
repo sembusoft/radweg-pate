@@ -90,7 +90,8 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           </aside>
         </section>
         <section id="routes-view" class="view">
-          <div class="section-heading"><div><h2>Deine Touren</h2><p class="muted">Die Kartendaten werden zentral per KML eingespielt.</p></div></div>
+          <div class="section-heading"><div><h2>Deine Touren</h2><p class="muted">Tour auswählen – Details und Aktionen erscheinen darunter.</p></div></div>
+          <div class="route-pick" id="route-pick" role="tablist" aria-label="Tour wählen"></div>
           <div id="route-list" class="route-grid"></div>
         </section>
         <section id="diary-view" class="view" hidden>

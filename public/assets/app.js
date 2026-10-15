@@ -96,6 +96,17 @@ function routeCard(r){
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
 }
+// Touren-Seite: eine Auswahlliste statt sieben gleicher Karten; die gewählte Tour bleibt gemerkt.
+function pickedRoute(){
+ const id=state.routePick||storedPref('radwegpate-route','');
+ return routeById(id)||state.routes[0];
+}
+function renderRoutePick(){
+ const r=pickedRoute();
+ $('#route-pick').innerHTML=state.routes.map(x=>{const open=pendingIssues([x.id]).length,on=r&&x.id===r.id;
+   return `<button type="button" role="tab" class="route-pick-btn${on?' active':''}" data-route-pick="${esc(x.id)}" aria-selected="${on}" aria-label="Tour ${esc(x.id)} · ${esc(x.name)}${open?`, ${open} offene Mängel`:''}" title="${esc(x.name)}">${esc(x.id)}${open?`<span class="route-pick-badge">${open}</span>`:''}</button>`;}).join('');
+ $('#route-list').innerHTML=r?routeCard(r):'';
+}
 function render(){
  $('#stat-routes').textContent=state.routes.length;
  const mine=myEntries().length;
@@ -106,7 +117,7 @@ function render(){
  $('#stat-issues').textContent=openIssues;
  $('#kpi-issues').classList.toggle('kpi-warn',openIssues>0);
  $('#kpi-issues').classList.toggle('kpi-ok',openIssues===0);
- $('#route-list').innerHTML=state.routes.map(routeCard).join('');
+ renderRoutePick();
  const choices=state.routes.map(r=>`<option value="${r.id}">${esc(r.id)} · ${esc(r.name)}</option>`).join('');
  const previous=$('#filter-tour').value;
  $('#filter-tour').innerHTML='<option value="">Alle Touren</option>'+choices;
@@ -518,6 +529,7 @@ function setupEvents(){
    const delPhoto=e.target.closest('[data-photo-delete]');if(delPhoto)deletePhoto(delPhoto.dataset.photoDelete);
    if(e.target.closest('[data-close]'))e.target.closest('dialog')?.close();
  });
+ $('#route-pick').addEventListener('click',e=>{const b=e.target.closest('[data-route-pick]');if(!b)return;state.routePick=b.dataset.routePick;storePref('radwegpate-route',state.routePick);renderRoutePick();});
  $('#filter-tour').addEventListener('change',renderDiary);$('#filter-status').addEventListener('change',renderDiary);
  $('#entry-form').addEventListener('submit',saveEntry);$('#route-form').addEventListener('submit',saveRoute);
  $('#get-position').addEventListener('click',()=>{
