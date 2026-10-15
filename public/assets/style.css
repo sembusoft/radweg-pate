@@ -331,6 +331,10 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
 .route-pick-btn.other:not(.active) { border-style: dashed; color: var(--text-muted); }
 .route-pick-btn.mine:not(.active) { border-color: var(--primary); }
 .route-group-label { margin: 6px 0 2px; font-size: .8125rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.chip.chip-demo { color: var(--warning-text); background: var(--warning-bg); border-color: currentColor; font-weight: 800; }
+.route-demo-btn { margin: -4px 0 12px; }
+.route-demo-btn.active { background: var(--warning-bg); color: var(--warning-text); border-color: currentColor; }
+.demo-admin { margin: 6px 0 14px; padding-top: 12px; border-top: var(--bw) solid var(--border); }
 .chip.chip-mine { color: var(--primary-text); border-color: var(--primary); }
 .route-pick-btn.active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .route-pick-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

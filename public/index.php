@@ -92,6 +92,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
         <section id="routes-view" class="view">
           <div class="section-heading"><div><h2>Deine Touren</h2></div></div>
           <div class="route-pick" id="route-pick" role="tablist" aria-label="Tour wählen"></div>
+          <button type="button" class="btn outline small full route-demo-btn" id="route-demo" hidden><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#player-play"/></svg> Demo-Tour zum Ausprobieren</button>
           <div id="route-list" class="route-grid"></div>
         </section>
         <section id="diary-view" class="view" hidden>
@@ -112,6 +113,9 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
               <p class="muted">Fett steht der Name der Tour in der App – mit dem Stift änderst du Name, Bereich, Länge und Hinweis. Darunter die Ebene aus deiner My-Maps-KML und welcher Tour sie zugeordnet ist.</p>
               <div id="source-assignments"></div>
               <button type="button" class="btn outline full" id="save-assignments"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#check"/></svg> Zuordnung speichern</button>
+              <div class="demo-admin" id="demo-admin"><span class="form-label">Demo-Tour</span><p class="smallnote">Zum Ausprobieren für neue Paten: nutzt die Strecke einer echten Tour, zählt nicht bei offenen Mängeln, Berichte tragen „DEMO“. Demo-Fahrten löschen sich nach 7 Tagen selbst.</p>
+                <label>Strecke von Tour<select id="demo-source"></select></label>
+                <button type="button" class="btn outline full" id="demo-reset"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#trash"/></svg> Alle Demo-Daten jetzt löschen</button></div>
             </article>
             <article class="surface" data-admin-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → <b>KML</b> wählen und die vollständige Karte exportieren. Vorhandene Tagebucheinträge bleiben erhalten.</p>
               <form id="kml-form"><label>KML-Datei auswählen<input type="file" id="kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" required></label><button type="submit" class="btn primary full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</button></form>

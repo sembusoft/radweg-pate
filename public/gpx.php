@@ -17,7 +17,7 @@ $token = (string)($_GET['dl'] ?? '');
 $id = (string)($_GET['id'] ?? '');
 $ids = (string)($_GET['ids'] ?? '');
 $okToken = preg_match('/^[a-f0-9]{32}$/', $token) === 1;
-$okId = preg_match('/^0[1-7]$/', $id) === 1;
+$okId = preg_match('/^0[0-7]$/', $id) === 1; // 00 = Demo-Tour
 $okIds = preg_match('/^0[1-7](,0[1-7]){1,6}$/', $ids) === 1;
 $valid = $okToken && ($okId xor $okIds);
 $query = $valid ? ($okIds ? 'ids=' . rawurlencode($ids) : 'id=' . rawurlencode($id)) . '&dl=' . $token : '';

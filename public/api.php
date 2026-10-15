@@ -143,9 +143,21 @@ function check_login_rate(): void {
 function login_failed(): void { dbq('INSERT INTO radpate_login_attempts (ip_hash, attempted_at) VALUES (?, UTC_TIMESTAMP())',[login_ip_hash()]); }
 
 // ── Lesemodell: Datenbankzeilen → JSON-Form der App (unverändert gegenüber den JSON-Dateien) ──
-const ROUTE_IDS=['01','02','03','04','05','06','07'];
+const ROUTE_IDS=['01','02','03','04','05','06','07'];   // echte Touren
+const DEMO_ID='00';                                       // Demo-Tour (Migration 004)
+/** Demo-Fahrten samt Fotos löschen; $olderThanDays=null: alle. Gibt die Zahl gelöschter Fahrten zurück. */
+function demo_purge(?int $olderThanDays=null): int {
+    $sql="SELECT e.id FROM radpate_entries e JOIN radpate_entry_routes er ON er.entry_id=e.id AND er.route_id='00'".($olderThanDays!==null?' WHERE e.created_at < UTC_TIMESTAMP() - INTERVAL '.(int)$olderThanDays.' DAY':'');
+    $ids=array_column(db_all($sql),'id');
+    if (!$ids) return 0;
+    $ph=implode(',',array_fill(0,count($ids),'?'));
+    $photos=db_all("SELECT id, file FROM radpate_photos WHERE entry_id IN ($ph)",$ids);
+    dbq("DELETE FROM radpate_entries WHERE id IN ($ph)",$ids);
+    delete_photo_rows_files($photos);
+    return count($ids);
+}
 function route_out(array $r): array {
-    return ['id'=>$r['id'],'name'=>$r['name'],'type'=>$r['type'],'area'=>$r['area'],'note'=>$r['note'],
+    return ['id'=>$r['id'],'name'=>$r['name'],'type'=>$r['type'],'demo'=>(bool)(int)($r['is_demo']??0),'demoSource'=>$r['demo_source']??null,'area'=>$r['area'],'note'=>$r['note'],
         'km'=>$r['km']===null?null:(float)$r['km'],
         'links'=>['komoot'=>$r['link_komoot'],'google'=>$r['link_google'],'apple'=>$r['link_apple'],'mymaps'=>$r['link_mymaps']]];
 }
@@ -303,6 +315,7 @@ if ($action==='login' && $method==='POST') {
     dbq('UPDATE radpate_users SET last_login_at=? WHERE id=?',[db_now(),$user['id']]);
     // Fahrten, die noch niemandem gehören (z. B. von 3.9.0 im Deploy-Fenster angelegt), dem ersten Admin geben.
     dbq("UPDATE radpate_entries SET user_id=(SELECT MIN(id) FROM radpate_users WHERE role='admin') WHERE user_id IS NULL");
+    demo_purge(7); // Demo-Fahrten älter als 7 Tage aufräumen
     start_session_for_user($user);
     result(['ok'=>true,'csrf'=>$_SESSION['csrf']]);
 }
@@ -382,10 +395,11 @@ function valid_tour_ids(mixed $raw): array {
     if (!is_array($raw)) fail('Bitte mindestens eine Tour wählen.');
     $ids=[];
     foreach ($raw as $id) {
-        if (!is_string($id) || !preg_match('/^0[1-7]$/',$id)) fail('Ungültige Tourenauswahl.');
+        if (!is_string($id) || !preg_match('/^0[0-7]$/',$id)) fail('Ungültige Tourenauswahl.');
         if (!in_array($id,$ids,true)) $ids[]=$id;
     }
     if (!$ids || count($ids)>7) fail('Bitte mindestens eine gültige Tour wählen.');
+    if (in_array(DEMO_ID,$ids,true) && count($ids)>1) fail('Die Demo-Tour kann nicht mit echten Touren kombiniert werden.');
     return $ids;
 }
 function valid_coords(mixed $raw): ?array {
@@ -668,9 +682,11 @@ if ($action==='report' && $method==='GET') {
     $pdf=new MiniPdf(); $pdf->addPage(); $L=$pdf->margin; $W=MiniPdf::W-2*$L;
     $pdf->footer='Radwegpate · Mängelbericht vom '.$de($e['date']).' · erstellt '.(new DateTime('now',new DateTimeZone('Europe/Berlin')))->format('d.m.Y H:i');
     // Kopf
+    $isDemo=$tours===[DEMO_ID];
+    if ($isDemo) $green=[150,90,10];
     $pdf->color($green); $pdf->rect(0,0,MiniPdf::W,78);
-    $pdf->color([255,255,255]); $pdf->font(true,19); $pdf->text($L,40,'Mängelbericht Kontrollfahrt');
-    $pdf->font(false,10); $pdf->text($L,60,'Radwegpate · Senden & Umgebung');
+    $pdf->color([255,255,255]); $pdf->font(true,19); $pdf->text($L,40,($isDemo?'DEMO – ':'').'Mängelbericht Kontrollfahrt');
+    $pdf->font(false,10); $pdf->text($L,60,$isDemo?'Übungsfahrt auf der Demo-Tour – nicht an Gemeinde oder Bauhof weiterleiten.':'Radwegpate · Senden & Umgebung');
     $pdf->y=100;
     // Eckdaten
     $meta=[
@@ -756,6 +772,19 @@ if ($action==='password' && $method==='POST') {
     dbq('UPDATE radpate_users SET password_hash=?, must_change_pw=0, password_version=password_version+1 WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),my_id()]);
     start_session_for_user(db_row('SELECT * FROM radpate_users WHERE id=?',[my_id()])); // diese Sitzung bleibt, alle anderen sind abgemeldet
     result(['ok'=>true]);
+}
+
+// ── Demo-Tour (nur Admin): Strecke wählen, Demo-Daten löschen ──
+if ($action==='demoConfig' && $method==='POST') {
+    require_admin();
+    $src=(string)(post_json()['source']??'');
+    if (!in_array($src,ROUTE_IDS,true)) fail('Bitte eine echte Tour (01–07) wählen.');
+    dbq("UPDATE radpate_routes SET demo_source=? WHERE id='00'",[$src]);
+    result(['ok'=>true,'routes'=>routes_all()]);
+}
+if ($action==='demoReset' && $method==='POST') {
+    require_admin();
+    result(['ok'=>true,'deleted'=>demo_purge(null)]);
 }
 
 // ── Benutzerverwaltung (nur Admin) ──
@@ -903,15 +932,18 @@ if ($action==='gpx' && $method==='GET') {
     $rawCombo=(string)($_GET['ids']??'');
     $combo=($rawCombo!=='');
     $ids=$combo?explode(',', $rawCombo):[(string)($_GET['id']??'')];
-    $valid=ROUTE_IDS;
+    $valid=$combo?ROUTE_IDS:[DEMO_ID,...ROUTE_IDS];
     if (($combo && (count($ids)<2 || count($ids)>7 || count($ids)!==count(array_unique($ids))))
         || (!$combo&&count($ids)!==1)) fail('Für eine Kombination bitte zwei bis sieben unterschiedliche Touren wählen.');
     foreach($ids as $id) if(!in_array($id,$valid,true)) fail('Unbekannte Tour.');
     $m=map_info();$byId=[];
     foreach($ids as $id) $byId[$id]=[];
+    // Demo-Tour: Linien der eingestellten echten Tour verwenden.
+    $demoSrc=in_array(DEMO_ID,$ids,true)?(string)(db_val("SELECT demo_source FROM radpate_routes WHERE id='00'")??''):'';
     foreach(($m['sources']??[]) as $src){
         $id=$m['assignments'][$src['id']]??'';
         if(array_key_exists($id,$byId))foreach(($src['lines']??[]) as $line)$byId[$id][]=$line;
+        if($demoSrc!=='' && $id===$demoSrc)foreach(($src['lines']??[]) as $line)$byId[DEMO_ID][]=$line;
     }
     foreach($ids as $id)if(!$byId[$id])fail('Für Tour '.$id.' ist keine KML-Linie vorhanden.',404);
     $routeNames=array_column(db_all('SELECT id, name FROM radpate_routes'),'name','id');$names=[];

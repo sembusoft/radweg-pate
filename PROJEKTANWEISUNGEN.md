@@ -79,6 +79,10 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
     weiterhin offenen Mängeln ihrer Touren (alle Paten), Fotos als JPEG-Vorschau, GPS-Links. Nur Ersteller/Admin.
     Versand über das Teilen-Menü (Datei vorher laden, `navigator.share` direkt im Tipp); Rückfall:
     Download + `mailto:` mit Betreff/Text.
+  - Demo-Tour `00` (ab 3.13.0, Migration 004): nutzt die Strecke einer echten Tour (`demo_source`, Admin
+    wählt in Einstellungen), nicht mit echten Touren mischbar, zählt nicht bei KPIs/offenen Mängeln, Bericht
+    mit „DEMO“. Demo-Fahrten löschen sich nach 7 Tagen (beim Login), Admin: „Alle Demo-Daten löschen“.
+    In der App liegt sie in `state.demo`, nicht in `state.routes` (echte Touren); `routeById()` findet beide.
   - Touren ↔ Paten (`radpate_user_routes`, ab 3.11.0): Admin ordnet im Benutzer-Dialog zu, eine Tour
     kann mehrere Paten haben. Wirkung nur in der Oberfläche: eigene Touren vorn und vorausgewählt
     (Touren-Knöpfe, Karte, „Fahrt beginnen“), andere bleiben erreichbar.

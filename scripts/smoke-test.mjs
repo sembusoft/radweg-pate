@@ -97,9 +97,9 @@ async function main() {
   check(r.res.status === 409, 'zweite Einrichtung → 409');
 
   r = await a.api('bootstrap');
-  check(r.data?.routes?.length === 7, '7 Touren vorhanden');
+  check(r.data?.routes?.filter(x => !x.demo).length === 7, '7 Touren vorhanden (plus Demo-Tour)');
   check(r.data?.me?.name === 'Siglinde' && r.data.me.role === 'admin', 'erste Benutzerin ist Admin', JSON.stringify(r.data?.me));
-  check(r.data?.routes?.[4]?.name === 'Süd / Richtung Illerzell', 'Tourname 05 wie KML', r.data?.routes?.[4]?.name);
+  check(r.data?.routes?.find(x => x.id === '05')?.name === 'Süd / Richtung Illerzell', 'Tourname 05 wie KML');
 
   // CSRF
   const saveCsrf = a.csrf; a.csrf = 'falsch';
@@ -139,6 +139,28 @@ async function main() {
   check(anon.status === 401, 'GPX mit falschem Schlüssel → 401');
   anon = await fetch(BASE + '/api.php?action=bootstrap&dl=' + boot.data.gpxToken);
   check(anon.status === 401, 'Schlüssel öffnet nichts außer GPX');
+
+  // Demo-Tour 00: nutzt die Strecke einer echten Tour, nicht mit echten Touren mischbar, löschbar
+  r = await a.api('bootstrap');
+  const demo = r.data?.routes?.find(x => x.id === '00');
+  check(demo?.demo === true && demo.demoSource === '07', 'Demo-Tour 00 vorhanden (Strecke von 07)', JSON.stringify(demo && { demo: demo.demo, src: demo.demoSource }));
+  r = await a.api('demoConfig', { method: 'POST', json: { source: '01' } });
+  check(r.data?.ok, 'Admin stellt Demo-Strecke auf Tour 01', r.data?.error);
+  const demoGpx = await a.req('api.php?action=gpx&id=00');
+  check(demoGpx.status === 200 && ((await demoGpx.text()).match(/<trkpt /g) || []).length === 5, 'GPX der Demo-Tour = Strecke von 01');
+  r = await a.api('tripStart', { method: 'POST', json: { tourIds: ['00', '01'], date: '2026-10-15', startTime: '08:00' } });
+  check(r.res.status === 400, 'Demo-Tour nicht mit echter Tour mischbar');
+  r = await a.api('tripStart', { method: 'POST', json: { tourIds: ['00'], date: '2026-10-15', startTime: '08:00' } });
+  check(r.data?.ok, 'Demo-Fahrt gestartet', r.data?.error);
+  const demoTrip = r.data?.entry?.id;
+  r = await a.api('issueSave', { method: 'POST', json: { entryId: demoTrip, issue: { id: 'i_' + hex(12), tourId: '00', kind: 'Belag', status: 'offen', place: 'Übung' } } });
+  check(r.data?.ok, 'Demo-Mangel erfasst', r.data?.error);
+  let demoPdf = await a.req('api.php?action=report&id=' + demoTrip);
+  check(demoPdf.status === 200 && (await demoPdf.arrayBuffer()).byteLength > 500, 'Bericht der Demo-Fahrt');
+  r = await a.api('demoReset', { method: 'POST' });
+  check(r.data?.ok && r.data.deleted === 1, 'Demo-Daten gelöscht', JSON.stringify(r.data));
+  r = await a.api('bootstrap');
+  check(!r.data?.entries?.some(e => e.id === demoTrip), 'Demo-Fahrt ist weg');
 
   // Kontrollfahrt mit Mangel
   const issueId = 'i_' + hex(12);

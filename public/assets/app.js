@@ -47,7 +47,7 @@ function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
  if(force)toast('Bitte erneut anmelden.',true);
 }
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
-async function loadData(){const data=await api('bootstrap');state.me=data.me||null;state.gpxToken=data.gpxToken||'';state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
+async function loadData(){const data=await api('bootstrap');state.me=data.me||null;state.gpxToken=data.gpxToken||'';state.demo=(data.routes||[]).find(r=>r.demo)||null;state.routes=(data.routes||[]).filter(r=>!r.demo);state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
 function selectTab(tab){state.tab=tab;if(tab==='settings'&&isAdmin())loadUsers();setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
@@ -69,6 +69,7 @@ function allIssues(){return state.entries.flatMap(e=>entryIssues(e).map(issue=>(
 const isAdmin=()=>state.me?.role==='admin';
 const isMine=e=>e.canEdit!==false;            // eigene Fahrt bzw. Admin
 function myEntries(){return state.entries.filter(isMine);}
+function myRealEntries(){return myEntries().filter(e=>!isDemoEntry(e));}
 function byLabel(e){return !e.own&&e.userName?` · von ${esc(e.userName)}`:'';}
 function applyRole(){
  const admin=isAdmin();
@@ -89,10 +90,10 @@ function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))
 function routeCard(r){
  const entries=counts(r.id), recent=entries[0], tourIssueCount=entries.reduce((n,e)=>n+entryIssues(e).filter(i=>i.tourId===r.id).length,0),openCount=pendingIssues([r.id]).length;
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
- const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
+ const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${mapId(r.id)}">${ic('map')} In Karte zeigen</button><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
  return `<article class="route-card">
   <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div>${isAdmin()?`<button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button>`:''}</div>
-  <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span>${isMyRoute(r.id)?`<span class="chip chip-mine">${ic('user')} Deine Tour</span>`:''}${(r.paten||[]).length?`<span class="chip">Paten: ${r.paten.map(esc).join(', ')}</span>`:''}<span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
+  <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.demo?'Übungsstrecke (Strecke von Tour '+esc(r.demoSource||'')+')':r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span>${r.demo?`<span class="chip chip-demo">DEMO · zählt nicht</span>`:''}${isMyRoute(r.id)?`<span class="chip chip-mine">${ic('user')} Deine Tour</span>`:''}${(r.paten||[]).length?`<span class="chip">Paten: ${r.paten.map(esc).join(', ')}</span>`:''}<span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
   <div class="route-actions"><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button>${mapLinks}</div>
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
@@ -111,22 +112,23 @@ function renderRoutePick(){
  const mineAny=myRouteIds().length>0;
  $('#route-pick').innerHTML=orderedRoutes().map(x=>{const open=pendingIssues([x.id]).length,on=r&&x.id===r.id,mine=isMyRoute(x.id);
    return `<button type="button" role="tab" class="route-pick-btn${on?' active':''}${mineAny&&!mine?' other':''}${mine?' mine':''}" data-route-pick="${esc(x.id)}" aria-selected="${on}" aria-label="Tour ${esc(x.id)} · ${esc(x.name)}${open?`, ${open} offene Mängel`:''}" title="${esc(x.name)}">${esc(x.id)}${open?`<span class="route-pick-badge">${open}</span>`:''}</button>`;}).join('');
+ $('#route-demo').hidden=!state.demo;$('#route-demo').classList.toggle('active',!!r&&isDemoId(r.id));$('#route-demo').setAttribute('aria-selected',String(!!r&&isDemoId(r.id)));
  $('#route-list').innerHTML=r?routeCard(r):'';
 }
 function render(){
  $('#stat-routes').textContent=state.routes.length;
- const mine=myEntries().length;
+ const mine=myRealEntries().length;
  $('#stat-entries').textContent=mine;
  $('#stat-entries-label').textContent=mine===1?'Prüfung':'Prüfungen';
- applyRole();
- const openIssues=allIssues().filter(item=>isPending(item.issue)).length;
+ applyRole();if(isAdmin())renderDemoAdmin();
+ const openIssues=allIssues().filter(item=>isPending(item.issue)&&!isDemoId(item.issue.tourId)).length;
  $('#stat-issues').textContent=openIssues;
  $('#kpi-issues').classList.toggle('kpi-warn',openIssues>0);
  $('#kpi-issues').classList.toggle('kpi-ok',openIssues===0);
  renderRoutePick();
  const choices=state.routes.map(r=>`<option value="${r.id}">${esc(r.id)} · ${esc(r.name)}</option>`).join('');
  const previous=$('#filter-tour').value;
- $('#filter-tour').innerHTML='<option value="">Alle Touren</option>'+choices;
+ $('#filter-tour').innerHTML='<option value="">Alle Touren</option>'+choices+(state.demo?`<option value="${esc(state.demo.id)}">${esc(state.demo.id)} · Demo-Tour</option>`:'');
  $('#filter-tour').value=previous;
  $('#entry-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tourIds" value="${esc(r.id)}"><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
  if(state.mapData)renderMapSettings();
@@ -144,7 +146,7 @@ function renderDiary(){
  // Eigene Fahrten (Admin: alle). Beim Filter auf Mängel auch fremde Fahrten – Mängel sehen alle.
  const withIssues=status==='offen'||status==='mangel';
  const matches=state.entries.filter(e=>(isMine(e)||(withIssues&&entryIssues(e).length))&&(!tour||entryRoutes(e).includes(tour))&&statusMatch(e));
- const routes=new Map(state.routes.map(r=>[r.id,r]));
+ const routes=new Map([...state.routes,...(state.demo?[state.demo]:[])].map(r=>[r.id,r]));
  $('#diary-list').innerHTML=matches.length?matches.map(e=>{
    const ids=entryRoutes(e),issues=entryIssues(e),pendingCount=issues.filter(isPending).length;
    const routeNames=ids.map(id=>esc(id+' · '+(routes.get(id)?.name||'Tour'))).join(' · ');
@@ -157,7 +159,7 @@ function renderDiary(){
      const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?ic('arrow-back-up')+' Wieder öffnen':ic('check')+' Als erledigt markieren'}</button>`;
      return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${issue.time?esc(issue.time)+' · ':''}${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}${issue.statusBy?' · '+esc(issue.statusBy):''}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
    }).join('')}</div>`:'';
-   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt${byLabel(e)} · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}${isMine(e)?`<div class="entry-bottom">${e.running&&e.own?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}${!e.running?`<button class="text-btn" type="button" data-report="${e.id}">${ic('file-text')} Bericht</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div>`:''}</article>`;
+   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">${isDemoEntry(e)?'<span class="chip chip-demo">DEMO</span> ':''}Kontrollfahrt${byLabel(e)} · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}${isMine(e)?`<div class="entry-bottom">${e.running&&e.own?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}${!e.running?`<button class="text-btn" type="button" data-report="${e.id}">${ic('file-text')} Bericht</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div>`:''}</article>`;
  }).join(''):(withIssues?'<div class="empty">Keine passenden Mängel.</div>':'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>');
 }
 // ── Laufende Kontrollfahrt ─────────────────────────────────────────────
@@ -172,7 +174,7 @@ function timeSpan(e){return e.startTime?(e.endTime?`${e.startTime}–${e.endTime
 function tripNavigationHtml(ids){
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(ids[0])}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
+   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(mapId(ids[0]))}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }
  const check=comboCheck(ids);
  return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" target="_blank" rel="noopener" href="${comboDownloadUrl(ids)}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
@@ -219,14 +221,15 @@ function openTripStart(ids=[]){
  const pre=ids.length?ids:myRouteIds(),mine=myRouteIds();
  const opt=r=>`<label class="entry-route-option"><input type="checkbox" name="tripTours" value="${esc(r.id)}" ${pre.includes(r.id)?'checked':''}><span>${esc(r.id)} · ${esc(r.name)}</span></label>`;
  const own=state.routes.filter(r=>mine.includes(r.id)),rest=state.routes.filter(r=>!mine.includes(r.id));
- $('#trip-start-routes').innerHTML=own.length?`<p class="route-group-label">Deine Touren</p>${own.map(opt).join('')}${rest.length?`<p class="route-group-label">Weitere Touren</p>${rest.map(opt).join('')}`:''}`:state.routes.map(opt).join('');
+ $('#trip-start-routes').innerHTML=(own.length?`<p class="route-group-label">Deine Touren</p>${own.map(opt).join('')}${rest.length?`<p class="route-group-label">Weitere Touren</p>${rest.map(opt).join('')}`:''}`:state.routes.map(opt).join(''))
+   +(state.demo?`<p class="route-group-label">Zum Ausprobieren</p>${opt(state.demo)}`:'');
  $('#trip-start-date').value=todayLocal();$('#trip-start-time').value=nowTime();
  $('#trip-start-dialog').showModal();
 }
 async function startTrip(ids,date=todayLocal(),time=nowTime()){
  const run=runningTrip();
  if(run){openTrip(run.id);toast('Es läuft noch eine Kontrollfahrt – erst beenden, dann eine neue beginnen.',true);return;}
- const picked=[...new Set(ids)].filter(id=>state.routes.some(r=>r.id===id));
+ const picked=[...new Set(ids)].filter(id=>!!routeById(id));
  if(!picked.length){toast('Bitte mindestens eine Tour auswählen.',true);return;}
  try{const r=await api('tripStart','POST',{tourIds:picked,date,startTime:time});await refresh();openTrip(r.entry.id);toast(`Kontrollfahrt gestartet · ${time} Uhr`);}
  catch(err){toast(err.message,true);}
@@ -321,7 +324,11 @@ async function changeIssueStatus(entryId,issueId,status){
    toast(status==='erledigt'?'Mangel als erledigt dokumentiert.':'Mangel wieder geöffnet.');
  } catch(error){toast(error.message,true);}
 }
-function routeById(id){return state.routes.find(r=>r.id===id);}
+function routeById(id){return state.routes.find(r=>r.id===id)||(state.demo?.id===id?state.demo:undefined);}
+// ── Demo-Tour: nutzt die Strecke einer echten Tour, zählt nicht bei offenen Mängeln/Prüfungen ──
+const isDemoId=id=>!!state.demo&&id===state.demo.id;
+const isDemoEntry=e=>entryRoutes(e).some(isDemoId);
+const mapId=id=>isDemoId(id)?(state.demo.demoSource||id):id;   // Karte/Linien der Demo-Tour = Quell-Tour
 function openRoute(id){const r=routeById(id);if(!r)return;
  $('#route-id').value=r.id;$('#route-name').value=r.name;$('#route-area').value=r.area;$('#route-km').value=r.km||'';$('#route-note').value=r.note||'';
  $('#route-dialog').showModal();
@@ -476,7 +483,7 @@ function reportUrl(id,dl=false){return 'api.php?action=report&id='+encodeURIComp
 async function openReport(id){
  const e=state.entries.find(x=>x.id===id);if(!e)return;
  const tours=entryRoutes(e).map(t=>`${t} · ${routeById(t)?.name||'Tour'}`).join(', ');
- Object.assign(report,{id,file:null,subject:`Radwegpate: Mängelbericht ${textDate(e.date)} (Tour ${entryRoutes(e).join(', ')})`,
+ Object.assign(report,{id,file:null,subject:`${isDemoEntry(e)?'DEMO – ':''}Radwegpate: Mängelbericht ${textDate(e.date)} (Tour ${entryRoutes(e).join(', ')})`,
    text:`Mängelbericht der Kontrollfahrt vom ${textDate(e.date)}${e.startTime?', '+timeSpan(e)+' Uhr':''}\nTouren: ${tours}\nAuf dieser Fahrt erfasst: ${entryIssues(e).length} ${entryIssues(e).length===1?'Mangel':'Mängel'}\n\nDetails, Fotos und GPS-Links im angehängten PDF.\n${state.me?.name?'\n'+state.me.name:''}`});
  $('#report-summary').textContent=`${textDate(e.date)} · Tour ${entryRoutes(e).join(', ')} · ${entryIssues(e).length} ${entryIssues(e).length===1?'Mangel':'Mängel'} erfasst`;
  $('#report-open').href=reportUrl(id);$('#report-open').hidden=iosStandalone(); // in der iPhone-App gäbe es aus der Vorschau keinen Weg zurück
@@ -533,6 +540,9 @@ function setupEvents(){
    openTripStart(state.tab==='map'?selectedMapTours():[]);});
  // Laufende Kontrollfahrt
  $('#trip-banner').addEventListener('click',()=>{const r=runningTrip();if(r)openTrip(r.id);});
+ // Demo-Tour nie mit echten Touren mischen: Häkchen schließen sich gegenseitig aus.
+ $('#trip-start-routes').addEventListener('change',e=>{const c=e.target;if(!c.checked||c.name!=='tripTours')return;
+   for(const o of $$('input[name="tripTours"]'))if(o!==c&&(isDemoId(c.value)||isDemoId(o.value)))o.checked=false;});
  $('#trip-start-form').addEventListener('submit',ev=>{ev.preventDefault();const ids=$$('input[name="tripTours"]:checked').map(c=>c.value);if(!ids.length){toast('Bitte mindestens eine Tour auswählen.',true);return;}$('#trip-start-dialog').close();startTrip(ids,$('#trip-start-date').value,$('#trip-start-time').value);});
  $('#trip-add-issue').addEventListener('click',()=>openIssueSheet());
  $('#issue-form').addEventListener('submit',saveIssue);
@@ -581,6 +591,9 @@ function setupEvents(){
    const delPhoto=e.target.closest('[data-photo-delete]');if(delPhoto)deletePhoto(delPhoto.dataset.photoDelete);
    if(e.target.closest('[data-close]'))e.target.closest('dialog')?.close();
  });
+ $('#demo-source').addEventListener('change',async e=>{try{await api('demoConfig','POST',{source:e.target.value});await refresh();toast('Demo-Tour nutzt jetzt die Strecke von Tour '+e.target.value+'.');}catch(err){toast(err.message,true);}});
+ $('#demo-reset').addEventListener('click',async()=>{if(!confirm('Alle Demo-Fahrten samt Mängeln und Fotos löschen?'))return;try{const d=await api('demoReset','POST',{});await refresh();toast(d.deleted?`${d.deleted} Demo-${d.deleted===1?'Fahrt':'Fahrten'} gelöscht.`:'Keine Demo-Daten vorhanden.');}catch(err){toast(err.message,true);}});
+ $('#route-demo').addEventListener('click',()=>{if(!state.demo)return;state.routePick=state.demo.id;storePref('radwegpate-route',state.demo.id);renderRoutePick();});
  $('#route-pick').addEventListener('click',e=>{const b=e.target.closest('[data-route-pick]');if(!b)return;state.routePick=b.dataset.routePick;storePref('radwegpate-route',state.routePick);renderRoutePick();});
  $('#filter-tour').addEventListener('change',renderDiary);$('#filter-status').addEventListener('change',renderDiary);
  $('#entry-form').addEventListener('submit',saveEntry);$('#route-form').addEventListener('submit',saveRoute);
@@ -604,7 +617,7 @@ async function deletePhoto(id){if(!window.confirm('Dieses Foto endgültig lösch
 const MAP_COLORS={'01':'#1463b1','02':'#057ba4','03':'#9c5b26','04':'#1d7b51','05':'#6f55bb','06':'#bd7422','07':'#d94b89'};
 const DEFAULT_CENTER=[48.323,10.042]; // Nur initialer Kartenausschnitt Senden, keine Streckenkoordinaten.
 function mapEmpty(){return {sources:[],assignments:{},importedAt:null,fileName:''};}
-function associatedSources(id){return (state.mapData?.sources||[]).filter(s=>state.mapData?.assignments?.[s.id]===id);}
+function associatedSources(id){id=mapId(id);return (state.mapData?.sources||[]).filter(s=>state.mapData?.assignments?.[s.id]===id);}
 function routeLines(id){return associatedSources(id).flatMap(s=>s.lines||[]);}
 function mapPoints(id){return routeLines(id).flat();}
 function kmLine(points){let km=0;for(let i=1;i<points.length;i++){
@@ -650,7 +663,7 @@ function routeTurnpoint(id){
  return matches[0];
 }
 function routeMaps(id){
- if(routeById(id)?.type==='runde')return null; // Eine Rundtour hat keinen einzelnen Wendepunkt
+ if(routeById(mapId(id))?.type==='runde')return null; // Eine Rundtour hat keinen einzelnen Wendepunkt
  const p=routeTurnpoint(id),start=startCoordinate(id);
  if(!p||!start)return null;
  const toLatLon=v=>`${v[1]},${v[0]}`;
@@ -792,6 +805,11 @@ function renderMapSettings(){
   return `<div class="source-row"><div class="source-head"><strong class="${route?'':'muted'}">${title}</strong>${edit}</div><small>KML-Ebene: ${esc(src.name)} · ${lines} ${lines===1?'Linie':'Linien'} · ${km.toFixed(1).replace('.',',')} km</small><label class="sr-only" for="assign-${src.id}">Tour für KML-Ebene ${esc(src.name)}</label><select id="assign-${src.id}" data-source-assign="${src.id}">${options}</select></div>`;
  }).join(''):'<p class="smallnote">Nach dem Import erscheinen die Ebenen hier.</p>';
  $('#save-assignments').disabled=!count;
+ renderDemoAdmin();
+}
+function renderDemoAdmin(){
+ const box=$('#demo-admin');box.hidden=!state.demo;if(!state.demo)return;
+ $('#demo-source').innerHTML=state.routes.map(r=>`<option value="${esc(r.id)}" ${state.demo.demoSource===r.id?'selected':''}>${esc(r.id)} · ${esc(r.name)}${routeLines(r.id).length?'':' (keine KML-Linie)'}</option>`).join('');
 }
 function kmlGetName(node){
  for(const ch of node.children||[]){if(ch.localName==='name')return ch.textContent.trim();}
