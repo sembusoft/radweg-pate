@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Nur Kommandozeile.
  *
  *   php db/import-json.php          Probelauf: zeigt, was übernommen würde (ändert nichts)
- *   php db/import-json.php --run    übernehmen
+ *   php db/import-json.php --run    übernehmen (bisheriger Zugang wird Admin „Siglinde“, anderer Name: --admin=Name)
  *
  * Läuft nur in eine LEERE Datenbank (kein Passwort, keine Kontrollfahrt) – ein zweiter Aufruf
  * meldet „bereits übernommen“ und ändert nichts (Exit 0). Alles in einer Transaktion.
@@ -16,6 +16,9 @@ require __DIR__ . '/db.php';
 db_cli_bootstrap();
 
 $run = in_array('--run', $argv, true);
+$adminName = 'Siglinde';
+foreach ($argv as $a) if (preg_match('/^--admin=(.{1,60})$/u', $a, $m)) $adminName = trim($m[1]);
+define('ADMIN_NAME', $adminName);
 // RADWEGPATE_IMPORT_DIR: anderer Quellordner – nur für scripts/import-test.php.
 $dir = rtrim((string)(getenv('RADWEGPATE_IMPORT_DIR') ?: APP_DATA_DIR), '/');
 $read = function (string $name) use ($dir): ?array {
@@ -40,7 +43,7 @@ const STATES = ['offen', 'gemeldet', 'bearbeitung', 'erledigt'];
 echo "Datenordner: $dir\nDatenbank:   " . APP_DB_NAME . "\n";
 if (!db_val("SHOW TABLES LIKE 'radpate\\_settings'")) { echo "Tabellen fehlen – zuerst php db/migrate.php ausführen.\n"; exit(1); }
 if (setting('json_imported_at') !== null) { echo 'Bereits übernommen am ' . setting('json_imported_at') . " – nichts zu tun.\n"; exit(0); }
-$hasPw = setting('password_hash') !== null;
+$hasPw = setting('password_hash') !== null || (db_val("SHOW TABLES LIKE 'radpate\\_users'") && (int)db_val('SELECT COUNT(*) FROM radpate_users') > 0);
 $hasEntries = (int)db_val('SELECT COUNT(*) FROM radpate_entries') > 0;
 if ($hasPw || $hasEntries) { echo "Datenbank ist nicht leer (Passwort oder Kontrollfahrten vorhanden) – keine Übernahme.\n"; exit(0); }
 
@@ -155,6 +158,13 @@ db_tx(function () use ($install, $routes, $plan, $map, $sources, $cut) {
     if ($sources) {
         setting_set('map_imported_at', (string)($map['importedAt'] ?? gmdate('c')));
         setting_set('map_file_name', $cut($map['fileName'] ?? '', 180));
+    }
+    // Ab Migration 002 gibt es Benutzer: der bisherige Zugang wird zum ersten Admin (Name per --admin=…),
+    // ihm gehören alle übernommenen Fahrten. Läuft 002 erst später, übernimmt sie das selbst.
+    if (!empty($install['password_hash']) && db_val("SHOW TABLES LIKE 'radpate\\_users'") && (int)db_val('SELECT COUNT(*) FROM radpate_users') === 0) {
+        dbq("INSERT INTO radpate_users (name, password_hash, role, active, must_change_pw, password_version, created_at) VALUES (?, ?, 'admin', 1, 0, ?, ?)",
+            [ADMIN_NAME, (string)$install['password_hash'], max(1, (int)($install['pwv'] ?? 1)), db_now()]);
+        dbq('UPDATE radpate_entries SET user_id = ? WHERE user_id IS NULL', [(int)db()->lastInsertId()]);
     }
     setting_set('json_imported_at', gmdate('c'));
 });

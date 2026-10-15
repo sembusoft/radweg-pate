@@ -87,17 +87,18 @@ async function main() {
   check(typeof s.version === 'string', 'Status liefert Version', s.version);
   let r = await a.api('bootstrap');
   check(r.res.status === 401, 'bootstrap ohne Login → 401');
-  r = await a.api('setup', { method: 'POST', json: { code: 'falsch', password: PASSWORD } });
+  r = await a.api('setup', { method: 'POST', json: { code: 'falsch', name: 'Siglinde', password: PASSWORD } });
   check(r.res.status === 403, 'Einrichtung mit falschem Code → 403', String(r.res.status));
-  r = await a.api('setup', { method: 'POST', json: { code: TOKEN, password: PASSWORD } });
-  check(r.data?.ok === true, 'Einrichtung mit Code', r.data?.error);
+  r = await a.api('setup', { method: 'POST', json: { code: TOKEN, name: 'Siglinde', password: PASSWORD } });
+  check(r.data?.ok === true, 'Einrichtung mit Code (erste Benutzerin Siglinde)', r.data?.error);
   s = await a.status();
   check(s.installed && s.loggedIn, 'nach Einrichtung angemeldet');
-  r = await a.api('setup', { method: 'POST', json: { code: TOKEN, password: PASSWORD } });
+  r = await a.api('setup', { method: 'POST', json: { code: TOKEN, name: 'Zweite', password: PASSWORD } });
   check(r.res.status === 409, 'zweite Einrichtung → 409');
 
   r = await a.api('bootstrap');
   check(r.data?.routes?.length === 7, '7 Touren vorhanden');
+  check(r.data?.me?.name === 'Siglinde' && r.data.me.role === 'admin', 'erste Benutzerin ist Admin', JSON.stringify(r.data?.me));
   check(r.data?.routes?.[4]?.name === 'Süd / Richtung Illerzell', 'Tourname 05 wie KML', r.data?.routes?.[4]?.name);
 
   // CSRF
@@ -201,11 +202,69 @@ async function main() {
   const expJson = await exp.json();
   check(expJson.entries?.length === 1 && expJson.mapData?.sources?.length === 1, 'JSON-Sicherung vollständig');
 
+  // ── Mehrere Benutzer: Pate legt eigene Fahrt an, sieht fremde Mängel, nicht fremde Fahrten ──
+  const PATE_START = 'Startpasswort-Paul-1', PATE_PW = 'Eigenes-Passwort-Paul-1';
+  r = await a.api('userSave', { method: 'POST', json: { name: 'Paul', role: 'pate', password: PATE_START } });
+  check(r.data?.ok && r.data.user?.mustChangePassword === true, 'Admin legt Paten an (Startpasswort)', r.data?.error);
+  const paulId = r.data?.user?.id;
+  r = await a.api('userSave', { method: 'POST', json: { name: 'paul', role: 'pate', password: PATE_START } });
+  check(r.res.status === 400, 'doppelter Name abgelehnt');
+  const adminId = (await a.api('bootstrap')).data?.me?.id;
+  r = await a.api('userSave', { method: 'POST', json: { id: adminId, name: 'Siglinde', role: 'pate' } });
+  check(r.res.status === 400, 'Admin kann sich nicht selbst herabstufen');
+  const p = new Client(); await p.status();
+  r = await p.api('login', { method: 'POST', json: { name: 'Niemand', password: PATE_START } });
+  check(r.res.status === 401, 'unbekannter Name → 401');
+  r = await p.api('login', { method: 'POST', json: { name: 'Paul', password: PATE_START } });
+  check(r.data?.ok, 'Pate meldet sich mit Startpasswort an', r.data?.error);
+  r = await p.api('bootstrap');
+  check(r.data?.me?.mustChangePassword === true && r.data.me.role === 'pate', 'Pate muss Passwort ändern');
+  r = await p.api('tripStart', { method: 'POST', json: { tourIds: ['01'], date: '2026-10-15', startTime: '08:00' } });
+  check(r.res.status === 403, 'vor eigenem Passwort keine Änderungen', String(r.res.status));
+  r = await p.api('password', { method: 'POST', json: { old: PATE_START, new: PATE_PW } });
+  check(r.data?.ok, 'Pate setzt eigenes Passwort', r.data?.error);
+  r = await p.api('bootstrap');
+  const foreign = r.data?.entries?.find(e => e.id === entryId);
+  check(r.data?.me?.mustChangePassword === false, 'Passwortpflicht erledigt');
+  check(foreign && foreign.own === false && foreign.canEdit === false && foreign.notes === '' && foreign.startTime === null && foreign.userName === 'Siglinde',
+    'fremde Fahrt nur als Hülle (ohne Notiz/Zeiten)', JSON.stringify(foreign && { own: foreign.own, notes: foreign.notes }));
+  check(foreign?.issues?.length === 1 && foreign.issues[0].photos.length === 1, 'fremde Mängel samt Fotos sichtbar');
+  ph = await p.req('api.php?action=photo&id=' + photoId);
+  check(ph.status === 200, 'Pate sieht Mängelfoto');
+  r = await p.api('tripUpdate', { method: 'POST', json: { entryId, notes: 'fremd' } });
+  check(r.res.status === 403, 'fremde Fahrt ändern → 403');
+  r = await p.api('deleteEntry', { method: 'POST', json: { id: entryId } });
+  check(r.res.status === 403, 'fremde Fahrt löschen → 403');
+  r = await p.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'erledigt' } });
+  check(r.data?.ok && r.data.issue?.statusBy === 'Paul', 'Pate setzt fremden Mangel auf erledigt (statusBy)', r.data?.error);
+  await a.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'offen' } });
+  for (const [act, json] of [['route', { id: '01', name: 'x' }], ['mapAssign', { assignments: {} }], ['userSave', { name: 'Hacker', role: 'admin', password: PATE_PW }]]) {
+    r = await p.api(act, { method: 'POST', json });
+    check(r.res.status === 403, `Pate: ${act} → 403`, String(r.res.status));
+  }
+  r = await p.api('users'); check(r.res.status === 403, 'Pate: Benutzerliste → 403');
+  r = await p.req('api.php?action=export'); check(r.status === 403, 'Pate: Sicherung → 403');
+  r = await p.api('tripStart', { method: 'POST', json: { tourIds: ['02'], date: '2026-10-15', startTime: '08:00' } });
+  check(r.data?.ok && r.data.entry.own === true && r.data.entry.userName === 'Paul', 'Pate startet eigene Fahrt', r.data?.error);
+  const paulTrip = r.data?.entry?.id;
+  r = await a.api('bootstrap');
+  const seen = r.data?.entries?.find(e => e.id === paulTrip);
+  check(seen && seen.canEdit === true && seen.own === false && seen.startTime === '08:00', 'Admin sieht Fahrt des Paten vollständig');
+  r = await a.api('users');
+  check(r.data?.users?.some(u => u.name === 'Paul' && u.entries === 1), 'Benutzerliste mit Fahrtenzahl');
+  r = await a.api('userSave', { method: 'POST', json: { id: paulId, name: 'Paul', role: 'pate', active: false } });
+  check(r.data?.ok && r.data.user.active === false, 'Admin deaktiviert Paten');
+  r = await p.api('bootstrap'); check(r.res.status === 401, 'Sitzung des deaktivierten Paten beendet');
+  r = await p.api('login', { method: 'POST', json: { name: 'Paul', password: PATE_PW } });
+  check(r.res.status === 401, 'deaktivierter Pate kann sich nicht anmelden');
+  r = await a.api('deleteEntry', { method: 'POST', json: { id: paulTrip } });
+  check(r.data?.ok, 'Admin löscht Fahrt des Paten');
+
   // Passwortwechsel meldet andere Sitzungen ab
   const b = new Client(); await b.status();
-  r = await b.api('login', { method: 'POST', json: { password: 'falsch-falsch-falsch' } });
+  r = await b.api('login', { method: 'POST', json: { name: 'Siglinde', password: 'falsch-falsch-falsch' } });
   check(r.res.status === 401, 'Login mit falschem Passwort → 401');
-  r = await b.api('login', { method: 'POST', json: { password: PASSWORD } });
+  r = await b.api('login', { method: 'POST', json: { name: 'siglinde', password: PASSWORD } });
   check(r.data?.ok, 'zweite Sitzung angemeldet', r.data?.error);
   r = await a.api('password', { method: 'POST', json: { old: PASSWORD, new: PASSWORD2 } });
   check(r.data?.ok, 'Passwort geändert', r.data?.error);

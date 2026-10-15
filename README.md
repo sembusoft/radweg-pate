@@ -6,7 +6,7 @@ verfolgen, GPX für Naviki exportieren.
 
 Produktiv: <https://radweg-pate.de> (all-inkl). PHP 8.1+, MariaDB 10.11 (Tabellen mit
 Präfix `radpate_` in einer gemeinsamen Datenbank). Fotos liegen als Dateien im gesperrten
-Datenordner `radwegpate_private/`.
+Datenordner `radwegpate_private/`. Mehrere Benutzer (Admin/Pate) mit Name + Passwort.
 
 ## Aufbau
 

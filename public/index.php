@@ -36,13 +36,14 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
         <h1 id="auth-title">Anmelden</h1>
         <p class="muted" id="auth-desc">Deine Dokumentation ist durch ein Passwort geschützt.</p>
         <form id="auth-form">
-          <label id="setup-code-wrap" hidden>Einrichtungscode<input id="setup-code" type="text" autocomplete="one-time-code" placeholder="APP_INSTALL_TOKEN aus config.php"></label>
+          <label id="setup-code-wrap" hidden>Einrichtungscode<input id="setup-code" type="text" autocomplete="one-time-code" placeholder="INSTALL_TOKEN aus der .env"></label>
+          <label>Name<input id="auth-name" type="text" autocomplete="username" autocapitalize="words" maxlength="60" required></label>
           <label>Passwort<input id="auth-password" type="password" minlength="12" autocomplete="current-password" required></label>
           <button type="submit" class="btn primary full" id="auth-submit">Anmelden</button>
         </form>
         <div id="auth-error" class="message error" role="alert" hidden></div>
       </div>
-      <p class="smallnote">Keine Datenbank · private JSON-Dateien auf deinem Webspace · Version <?= htmlspecialchars(APP_VERSION) ?></p>
+      <p class="smallnote">Version <?= htmlspecialchars(APP_VERSION) ?></p>
     </section>
 
     <section id="main" hidden>
@@ -99,19 +100,25 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           <div class="actions-row"><button class="btn outline" id="export-csv"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Tagebuch als CSV</button></div>
         </section>
         <section id="settings-view" class="view" hidden>
-          <div class="section-heading"><div><h2>Einstellungen</h2><p class="muted">Touren und KML-Ebenen, Import und Datensicherung.</p></div></div>
+          <div class="section-heading"><div><h2>Einstellungen</h2><p class="muted" id="settings-sub">Benutzer, Touren und KML-Ebenen, Import und Datensicherung.</p></div></div>
           <div class="settings-grid">
-            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg> Touren und KML-Ebenen</h3>
+            <article class="surface" id="users-admin" data-admin-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#users"/></svg> Benutzer</h3>
+              <p class="muted">Paten sehen ihre eigenen Kontrollfahrten und die Mängel aller. Admins verwalten zusätzlich Benutzer, Touren, KML und Sicherung. Neue Benutzer ändern ihr Startpasswort beim ersten Anmelden.</p>
+              <div id="user-list" class="user-list"></div>
+              <button type="button" class="btn outline full" id="user-add"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#user-plus"/></svg> Benutzer anlegen</button>
+            </article>
+            <article class="surface" data-admin-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#route"/></svg> Touren und KML-Ebenen</h3>
               <p class="muted">Fett steht der Name der Tour in der App – mit dem Stift änderst du Name, Bereich, Länge und Hinweis. Darunter die Ebene aus deiner My-Maps-KML und welcher Tour sie zugeordnet ist.</p>
               <div id="source-assignments"></div>
               <button type="button" class="btn outline full" id="save-assignments"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#check"/></svg> Zuordnung speichern</button>
             </article>
-            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → <b>KML</b> wählen und die vollständige Karte exportieren. Vorhandene Tagebucheinträge bleiben erhalten.</p>
+            <article class="surface" data-admin-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</h3><p class="muted">In Google My Maps: ⋮ → In KML/KMZ exportieren → <b>KML</b> wählen und die vollständige Karte exportieren. Vorhandene Tagebucheinträge bleiben erhalten.</p>
               <form id="kml-form"><label>KML-Datei auswählen<input type="file" id="kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" required></label><button type="submit" class="btn primary full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#upload"/></svg> KML importieren</button></form>
               <p id="map-import-info" class="smallnote">Noch kein Import.</p>
               <details class="reference-map"><summary>Originalkarte in Google My Maps ansehen</summary><p class="muted">Zum Vergleich mit dem Import: zeigt alle My-Maps-Ebenen, unabhängig von der Auswahl auf der Karte.</p><iframe src="https://www.google.com/maps/d/embed?mid=1fJAjiQpdqoh6MZ5s0dh1wRHCcR69G0o&amp;hl=de&amp;ehbc=2E312F" title="My Maps Originalkarte der Radwegpaten-Touren" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe></details>
             </article>
-            <article class="surface"><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Datensicherung</h3><p class="muted">Touren, Prüfungen und Einzelmängel als JSON-Datei. Fotos sind nicht enthalten – sie liegen im Datenordner auf dem Webspace und werden dort gesichert.</p><a href="api.php?action=export" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> JSON-Sicherung herunterladen</a></article>
+            <article class="surface" data-admin-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> Datensicherung</h3><p class="muted">Touren, Prüfungen und Einzelmängel als JSON-Datei. Fotos sind nicht enthalten – sie liegen im Datenordner auf dem Webspace und werden dort gesichert.</p><a href="api.php?action=export" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> JSON-Sicherung herunterladen</a></article>
+            <article class="surface" data-pate-only hidden><h3><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#info-circle"/></svg> Touren und Benutzer</h3><p class="muted">Touren, KML-Karte, Benutzer und Datensicherung verwaltet der Admin. Dein Passwort, Farbschema und Schriftgröße findest du oben unter dem Zahnrad.</p></article>
           </div><p class="smallnote">Zum Homescreen: Safari „Teilen → Zum Home-Bildschirm“, Chrome „Installieren“. Für Änderungen und Foto-Uploads ist eine Internetverbindung nötig.</p>
           <p class="smallnote app-imprint">Radwegpate · Dokumentation von Streckenkontrollen · Startpunkt Flurweg 7, 89250 Senden</p>
         </section>
@@ -166,13 +173,26 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
               <p class="smallnote">Gilt für dieses Gerät. „Automatisch“ folgt der Einstellung des Handys.</p>
             </section>
     <div class="rule"></div>
-    <section class="prefs-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</h3>
+    <section class="prefs-section" id="password-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</h3>
+      <p class="message warn" id="pw-required" hidden>Du bist mit einem Startpasswort angemeldet. Bitte lege jetzt dein eigenes Passwort fest – vorher kannst du nichts speichern.</p>
       <form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
     </section>
     <div class="rule"></div>
+    <p class="smallnote" id="whoami"></p>
     <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>
     <p class="smallnote prefs-version">Radwegpate · Version <?= htmlspecialchars(APP_VERSION) ?></p>
   </div></dialog>
+  <dialog id="user-dialog" class="modal" aria-labelledby="user-heading"><form id="user-form" class="modal-content" method="dialog">
+    <div class="modal-heading"><div><p class="eyebrow">Benutzer</p><h2 id="user-heading">Benutzer anlegen</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <input type="hidden" id="user-id">
+    <label>Name (zum Anmelden)<input id="user-name" maxlength="60" autocomplete="off" required></label>
+    <label>Rolle<select id="user-role"><option value="pate">Pate – eigene Fahrten, Mängel aller</option><option value="admin">Admin – zusätzlich Benutzer, Touren, KML, Sicherung</option></select></label>
+    <label class="check-row"><input type="checkbox" id="user-active" checked> <span>Zugang aktiv</span></label>
+    <label><span id="user-pw-label">Startpasswort (mindestens 12 Zeichen)</span><input id="user-password" type="text" minlength="12" maxlength="256" autocomplete="off" spellcheck="false"></label>
+    <div class="dialog-inline"><button type="button" class="btn outline small" id="user-pw-suggest"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#refresh"/></svg> Passwort vorschlagen</button></div>
+    <p class="smallnote" id="user-pw-hint">Das Startpasswort gibst du der Person weiter; sie muss es beim ersten Anmelden ändern.</p>
+    <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#check"/></svg> Speichern</button></div>
+  </form></dialog>
   <dialog id="trip-start-dialog" class="modal" aria-labelledby="trip-start-heading"><form id="trip-start-form" class="modal-content" method="dialog">
     <div class="modal-heading"><div><p class="eyebrow">Kontrollfahrt</p><h2 id="trip-start-heading">Fahrt beginnen</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
     <div class="entry-routes-wrapper"><span class="form-label">Touren dieser Fahrt</span><div id="trip-start-routes" class="entry-route-options" role="group" aria-label="Touren dieser Fahrt"></div></div>

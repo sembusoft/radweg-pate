@@ -22,7 +22,9 @@ export const ICONS = [
   // Laufende Kontrollfahrt
   'clock', 'flag',
   // Einstellungen
-  'palette', 'text-size', 'lock', 'logout', 'refresh'
+  'palette', 'text-size', 'lock', 'logout', 'refresh',
+  // Benutzer
+  'users', 'user-plus', 'user'
 ];
 
 const base = process.argv[2] || 'node_modules/@tabler/icons/icons/outline';

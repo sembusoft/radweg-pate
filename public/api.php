@@ -68,23 +68,51 @@ function post_json(): array {
 function check_csrf(): void {
     if (!hash_equals($_SESSION['csrf']??'', $_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('Sicherheitsprüfung fehlgeschlagen. Bitte neu laden.',403);
 }
-function password_version(): int {
-    static $v=null;
-    return $v ??= (int)(setting('password_version') ?? 0);
+/** Angemeldeter Benutzer (Zeile aus radpate_users) oder null. Je Anfrage einmal gelesen. */
+function me(): ?array {
+    static $u=false;
+    if ($u!==false) return $u;
+    $u=null;
+    $uid=(int)($_SESSION['uid']??0);
+    if ($uid<=0 || (time()-(int)($_SESSION['last_active']??0)) >= 60*60*24*14) return null;
+    $row=db_row('SELECT id, name, role, active, must_change_pw, password_version FROM radpate_users WHERE id=?',[$uid]);
+    // Deaktiviert oder Passwort inzwischen geändert (Version erhöht) → Sitzung ungültig.
+    if (!$row || !(int)$row['active'] || (int)$row['password_version']!==(int)($_SESSION['pwv']??-1)) return null;
+    return $u=$row;
 }
-function logged_in(): bool {
-    // Nach einem Passwortwechsel (Version erhöht) sind alle anderen Sitzungen ungültig.
-    return !empty($_SESSION['logged'])
-        && (time() - (int)($_SESSION['last_active']??0)) < 60*60*24*14
-        && (int)($_SESSION['pwv'] ?? 0) === password_version();
-}
-function start_session_for_user(int $pwv): void {
+function logged_in(): bool { return me()!==null; }
+function is_admin(): bool { return (me()['role']??'')==='admin'; }
+function my_id(): int { return (int)(me()['id']??0); }
+function start_session_for_user(array $user): void {
     session_regenerate_id(true);
-    $_SESSION['logged']=true; $_SESSION['last_active']=time(); $_SESSION['pwv']=$pwv;
+    unset($_SESSION['logged'],$_SESSION['gpxToken'],$_SESSION['gpxTokenExp']);
+    $_SESSION['uid']=(int)$user['id']; $_SESSION['pwv']=(int)$user['password_version']; $_SESSION['last_active']=time();
 }
 function require_login(): void {
-    if (!logged_in()) {unset($_SESSION['logged']); fail('Bitte erneut anmelden.',401);}
+    if (!logged_in()) { unset($_SESSION['uid']); fail('Bitte erneut anmelden.',401); }
     $_SESSION['last_active']=time();
+}
+function require_admin(): void { if (!is_admin()) fail('Nur für Admins.',403); }
+/** Darf der angemeldete Benutzer diese Kontrollfahrt ändern? (Ersteller oder Admin) */
+function require_owner(array $entryRow): void {
+    if (!is_admin() && (int)($entryRow['user_id']??0)!==my_id()) fail('Nur die eigene Kontrollfahrt kann geändert werden.',403);
+}
+const USER_ROLES=['admin','pate'];
+function valid_user_name(mixed $raw): string {
+    $name=trim(preg_replace('/\s+/u',' ',(string)$raw) ?? '');
+    $len=function_exists('mb_strlen')?mb_strlen($name):strlen($name);
+    if ($len<2 || $len>60 || !preg_match('/^[\p{L}\p{N} ._\-]+$/u',$name)) fail('Name: 2 bis 60 Zeichen, Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich.');
+    return $name;
+}
+function valid_new_password(mixed $raw): string {
+    $pw=(string)$raw;
+    if (strlen($pw)<12 || strlen($pw)>256) fail('Passwort: 12 bis 256 Zeichen.');
+    return $pw;
+}
+function user_out(array $u): array {
+    return ['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'active'=>(bool)(int)$u['active'],
+        'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'lastLoginAt'=>db_iso($u['last_login_at']??null),
+        'entries'=>isset($u['entries'])?(int)$u['entries']:null];
 }
 function valid_url(string $url): bool {
     if ($url==='') return true;
@@ -122,31 +150,46 @@ function photo_out(array $p): array { return ['id'=>$p['id'],'name'=>$p['name'],
 function issue_out(array $i, array $photos): array {
     return ['id'=>$i['id'],'tourId'=>$i['route_id'],'kind'=>$i['kind'],'time'=>db_hm($i['issue_time']),
         'place'=>$i['place'],'description'=>$i['description'],'status'=>$i['status'],'coords'=>coords_out($i),
-        'photos'=>$photos,'createdAt'=>db_iso($i['created_at']),'completedAt'=>db_iso($i['completed_at'])];
+        'photos'=>$photos,'createdAt'=>db_iso($i['created_at']),'completedAt'=>db_iso($i['completed_at']),
+        'statusBy'=>$i['status_by_name']??null];
 }
-/** Kontrollfahrten mit Touren, Mängeln und Fotos. $id: nur diese eine (oder [] wenn nicht vorhanden). */
+/**
+ * Kontrollfahrten mit Touren, Mängeln und Fotos. $id: nur diese eine (oder [] wenn nicht vorhanden).
+ * Sichtbarkeit: eigene Fahrten (Admin: alle) vollständig. Fremde Fahrten nur als Hülle für ihre
+ * Mängel – Mängel sehen alle; Notizen, Zeiten, Fahrt-GPS und allgemeine Fotos bleiben beim Ersteller.
+ */
 function entries_load(?string $id=null): array {
     $where=$id===null?'':' WHERE entry_id = ?'; $p=$id===null?[]:[$id];
-    $rows=db_all('SELECT * FROM radpate_entries'.($id===null?'':' WHERE id = ?').' ORDER BY trip_date, created_at',$p);
+    $rows=db_all('SELECT e.*, u.name AS user_name FROM radpate_entries e LEFT JOIN radpate_users u ON u.id=e.user_id'.($id===null?'':' WHERE e.id = ?').' ORDER BY e.trip_date, e.created_at',$p);
     if (!$rows) return [];
     $tours=[]; foreach (db_all('SELECT entry_id, route_id FROM radpate_entry_routes'.$where.' ORDER BY position, route_id',$p) as $r) $tours[$r['entry_id']][]=$r['route_id'];
     $photos=[]; foreach (db_all('SELECT * FROM radpate_photos'.$where.' ORDER BY position, created_at',$p) as $r) $photos[$r['entry_id']][$r['issue_id']??''][]=photo_out($r);
-    $issues=[]; foreach (db_all('SELECT * FROM radpate_issues'.$where.' ORDER BY position, created_at',$p) as $r) $issues[$r['entry_id']][]=issue_out($r,$photos[$r['entry_id']][$r['id']]??[]);
-    $out=[];
+    $issues=[]; foreach (db_all('SELECT i.*, u.name AS status_by_name FROM radpate_issues i LEFT JOIN radpate_users u ON u.id=i.status_by'.($id===null?'':' WHERE i.entry_id = ?').' ORDER BY i.position, i.created_at',$p) as $r) $issues[$r['entry_id']][]=issue_out($r,$photos[$r['entry_id']][$r['id']]??[]);
+    $out=[]; $admin=is_admin(); $me=my_id();
     foreach ($rows as $e) {
         $ids=$tours[$e['id']]??[]; $iss=$issues[$e['id']]??[];
+        $own=(int)($e['user_id']??0)===$me;
+        $full=$own||$admin;
         $out[]=['id'=>$e['id'],'createdAt'=>db_iso($e['created_at']),'updatedAt'=>db_iso($e['updated_at']),
             'tourIds'=>$ids,'tourId'=>$ids[0]??null,'date'=>$e['trip_date'],
-            'startTime'=>db_hm($e['start_time']),'endTime'=>db_hm($e['end_time']),'running'=>(bool)$e['running'],
-            'status'=>entry_status($iss),'notes'=>$e['notes'],'coords'=>coords_out($e),
-            'issues'=>$iss,'photos'=>$photos[$e['id']]['']??[]];
+            'startTime'=>$full?db_hm($e['start_time']):null,'endTime'=>$full?db_hm($e['end_time']):null,
+            'running'=>$full && (bool)$e['running'],
+            'status'=>entry_status($iss),'notes'=>$full?$e['notes']:'','coords'=>$full?coords_out($e):null,
+            'issues'=>$iss,'photos'=>$full?($photos[$e['id']]['']??[]):[],
+            'userId'=>$e['user_id']===null?null:(int)$e['user_id'],'userName'=>$e['user_name']??'',
+            'own'=>$own,'canEdit'=>$full];
     }
     return $out;
 }
 function entry_one(string $id): array { return entries_load($id)[0] ?? fail('Kontrollfahrt nicht gefunden.',404); }
-/** Kontrollfahrt sperren (innerhalb einer Transaktion) – parallele Änderungen warten. */
-function entry_lock(string $id): array {
-    return db_row('SELECT * FROM radpate_entries WHERE id = ? FOR UPDATE',[$id]) ?? fail('Kontrollfahrt nicht gefunden.',404);
+/**
+ * Kontrollfahrt sperren (innerhalb einer Transaktion) – parallele Änderungen warten.
+ * $mustOwn: nur Ersteller oder Admin (Ausnahme: Mangel-Status, den darf jeder setzen).
+ */
+function entry_lock(string $id, bool $mustOwn=true): array {
+    $row=db_row('SELECT * FROM radpate_entries WHERE id = ? FOR UPDATE',[$id]) ?? fail('Kontrollfahrt nicht gefunden.',404);
+    if ($mustOwn) require_owner($row);
+    return $row;
 }
 function entry_tour_ids(string $id): array {
     return array_column(db_all('SELECT route_id FROM radpate_entry_routes WHERE entry_id=? ORDER BY position, route_id',[$id]),'route_id');
@@ -210,7 +253,7 @@ $action=(string)($_GET['action']??'status');
 $method=(string)($_SERVER['REQUEST_METHOD']??'GET');
 // dl.<host> dient nur der GPX-Download-Seite (gpx.php): dort gibt es nur status und gpx (mit Schlüssel).
 if (str_starts_with(strtolower((string)($_SERVER['HTTP_HOST']??'')),'dl.') && !in_array($action,['status','gpx'],true)) fail('Nicht verfügbar.',404);
-$installed=setting('password_hash')!==null;
+$installed=(int)db_val('SELECT COUNT(*) FROM radpate_users')>0;
 
 if ($action==='status' && $method==='GET') {
     result(['ok'=>true,'installed'=>$installed,'loggedIn'=>$installed && logged_in(), 'csrf'=>$_SESSION['csrf'], 'version'=>APP_VERSION]);
@@ -219,32 +262,38 @@ if ($action==='setup' && $method==='POST') {
     check_csrf();
     if ($installed) fail('Einrichtung bereits abgeschlossen.',409);
     $token=defined('APP_INSTALL_TOKEN') ? (string)APP_INSTALL_TOKEN : '';
-    if (strlen($token)<20 || str_starts_with($token,'HIER-')) fail('Einrichtung gesperrt: APP_INSTALL_TOKEN in config.php setzen (mindestens 20 Zeichen).',503);
+    if (strlen($token)<20 || str_starts_with($token,'HIER-')) fail('Einrichtung gesperrt: INSTALL_TOKEN in der .env setzen (mindestens 20 Zeichen).',503);
     check_login_rate();
     $data=post_json();
     if (!hash_equals($token, (string)($data['code']??''))) fail('Einrichtungscode stimmt nicht.',403);
-    $pw=(string)($data['password']??'');
-    if (strlen($pw)<12 || strlen($pw)>256) fail('Passwort muss 12 bis 256 Zeichen haben.');
-    // INSERT ohne ON DUPLICATE: kommen zwei Einrichtungen gleichzeitig, gewinnt genau eine.
-    try {
-        db_tx(function () use ($pw) {
-            dbq("INSERT INTO radpate_settings (`name`,`value`) VALUES ('password_hash', ?)",[password_hash($pw,PASSWORD_DEFAULT)]);
-            setting_set('password_version','1');
-            setting_set('installed_at',gmdate('c'));
-        });
-    } catch (PDOException $e) {
-        if ((string)$e->getCode()==='23000') fail('Bereits eingerichtet.',409);
-        throw $e;
-    }
-    start_session_for_user(1);
+    $name=valid_user_name($data['name']??'');
+    $pw=valid_new_password($data['password']??'');
+    // Erster Benutzer = Admin. Sperre über die Tabelle: kommen zwei Einrichtungen gleichzeitig, gewinnt eine.
+    $user=db_tx(function () use ($name,$pw) {
+        if ((int)db_val('SELECT COUNT(*) FROM radpate_users FOR UPDATE')>0) fail('Bereits eingerichtet.',409);
+        dbq("INSERT INTO radpate_users (name, password_hash, role, active, must_change_pw, password_version, created_at, last_login_at) VALUES (?,?, 'admin', 1, 0, 1, ?, ?)",
+            [$name,password_hash($pw,PASSWORD_DEFAULT),db_now(),db_now()]);
+        return db_row('SELECT * FROM radpate_users WHERE id=?',[(int)db()->lastInsertId()]);
+    });
+    start_session_for_user($user);
     result(['ok'=>true]);
 }
 if ($action==='login' && $method==='POST') {
     check_csrf();
     check_login_rate();
-    $pw=(string)(post_json()['password']??'');
-    if (!$installed || !password_verify($pw,(string)setting('password_hash'))) fail('Passwort ist nicht korrekt.',401);
-    start_session_for_user(password_version());
+    $in=post_json();
+    $name=trim((string)($in['name']??'')); $pw=(string)($in['password']??'');
+    $user=$name===''?null:db_row('SELECT * FROM radpate_users WHERE name=? AND active=1',[$name]);
+    // Gleiche Meldung für unbekannten Namen und falsches Passwort.
+    if (!$user || !password_verify($pw,(string)$user['password_hash'])) {
+        if (!$user) password_verify($pw,'$2y$10$abcdefghijklmnopqrstuuJ8kq3Vt6x0VZ8l9QeXyYB6r8m0Ff0nO'); // gleiche Laufzeit
+        fail('Name oder Passwort ist nicht korrekt.',401);
+    }
+    if (password_needs_rehash((string)$user['password_hash'],PASSWORD_DEFAULT)) dbq('UPDATE radpate_users SET password_hash=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),$user['id']]);
+    dbq('UPDATE radpate_users SET last_login_at=? WHERE id=?',[db_now(),$user['id']]);
+    // Fahrten, die noch niemandem gehören (z. B. von 3.9.0 im Deploy-Fenster angelegt), dem ersten Admin geben.
+    dbq("UPDATE radpate_entries SET user_id=(SELECT MIN(id) FROM radpate_users WHERE role='admin') WHERE user_id IS NULL");
+    start_session_for_user($user);
     result(['ok'=>true]);
 }
 if ($action==='logout' && $method==='POST') {
@@ -273,6 +322,9 @@ $gpxByToken = $action==='gpx' && $method==='GET' && gpx_token_valid((string)($_G
 if (!$gpxByToken) {
     require_login();
     if ($method==='POST') check_csrf();
+    // Startpasswort: bis zum eigenen Passwort nur lesen, Passwort ändern, abmelden.
+    if ((int)(me()['must_change_pw']??0) && $method==='POST' && !in_array($action,['password','logout'],true))
+        fail('Bitte zuerst ein eigenes Passwort festlegen (Zahnrad → Passwort ändern).',403);
 }
 
 /** KML-Daten in der bisherigen Form: sources[], assignments{ebene: tour}, importedAt, fileName. */
@@ -286,8 +338,13 @@ function map_info(): array {
 }
 function map_valid_id(string $value): bool { return preg_match('/^[a-f0-9]{16}$/', $value)===1; }
 function gpx_escape(string $s): string { return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8'); }
-if ($action==='bootstrap' && $method==='GET') result(['ok'=>true,'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
+if ($action==='bootstrap' && $method==='GET') {
+    $u=me();
+    result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw']],
+        'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
+}
 if ($action==='route' && $method==='POST') {
+    require_admin();
     $in=post_json();
     $id=(string)($in['id']??'');
     if (!in_array($id,ROUTE_IDS,true)) fail('Unbekannte Tour.');
@@ -359,7 +416,7 @@ function issue_upsert(string $entryId, array $c, int $position): void {
     else dbq('INSERT INTO radpate_issues (route_id, position, kind, issue_time, place, description, status, lat, lon, completed_at, id, entry_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$vals,$c['id'],$entryId,db_now()]);
 }
 function issue_one(string $issueId): array {
-    $r=db_row('SELECT * FROM radpate_issues WHERE id=?',[$issueId]) ?? fail('Mangel nicht gefunden.',404);
+    $r=db_row('SELECT i.*, u.name AS status_by_name FROM radpate_issues i LEFT JOIN radpate_users u ON u.id=i.status_by WHERE i.id=?',[$issueId]) ?? fail('Mangel nicht gefunden.',404);
     return issue_out($r,array_map('photo_out',db_all('SELECT * FROM radpate_photos WHERE issue_id=? ORDER BY position, created_at',[$issueId])));
 }
 function entry_status(array $issues): string { return count($issues)>0?'mangel':'gut'; }
@@ -392,8 +449,8 @@ if ($action==='entry' && $method==='POST') {
             $entryId=$id;
         } else {
             $entryId=bin2hex(random_bytes(12));
-            dbq('INSERT INTO radpate_entries (id, trip_date, start_time, end_time, running, notes, lat, lon, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,?)',
-                [$entryId,$date,$startTime,$endTime,$notes,$coords['lat']??null,$coords['lon']??null,$now,$now]);
+            dbq('INSERT INTO radpate_entries (id, user_id, trip_date, start_time, end_time, running, notes, lat, lon, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?,?,?,?)',
+                [$entryId,my_id(),$date,$startTime,$endTime,$notes,$coords['lat']??null,$coords['lon']??null,$now,$now]);
         }
         entry_set_tours($entryId,$tourIds);
         foreach ($issues as $pos=>$c) issue_upsert($entryId,$c,$pos);
@@ -416,10 +473,10 @@ if ($action==='issueStatus' && $method==='POST') {
     if (!preg_match('/^[a-f0-9]{24}$/',$entryId) || !preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangelkennung.');
     if (!in_array($next,['erledigt','offen'],true)) fail('Ungültiger Mangelstatus.');
     db_tx(function () use ($entryId,$issueId,$next) {
-        entry_lock($entryId);
+        entry_lock($entryId,false); // Status darf jeder setzen
         $old=db_row('SELECT status, completed_at FROM radpate_issues WHERE id=? AND entry_id=?',[$issueId,$entryId]) ?? fail('Mangel nicht gefunden.',404);
         $completed=$next==='erledigt' ? (($old['status']==='erledigt' && $old['completed_at']) ? $old['completed_at'] : db_now()) : null;
-        dbq('UPDATE radpate_issues SET status=?, completed_at=? WHERE id=?',[$next,$completed,$issueId]);
+        dbq('UPDATE radpate_issues SET status=?, completed_at=?, status_by=? WHERE id=?',[$next,$completed,my_id(),$issueId]);
         entry_touch($entryId);
     });
     result(['ok'=>true,'issue'=>issue_one($issueId),'entryId'=>$entryId]);
@@ -434,7 +491,7 @@ if ($action==='tripStart' && $method==='POST') {
     $id=bin2hex(random_bytes(12));
     db_tx(function () use ($id,$tourIds,$date,$startTime) {
         $now=db_now();
-        dbq("INSERT INTO radpate_entries (id, trip_date, start_time, end_time, running, notes, created_at, updated_at) VALUES (?,?,?,NULL,1,'',?,?)",[$id,$date,$startTime,$now,$now]);
+        dbq("INSERT INTO radpate_entries (id, user_id, trip_date, start_time, end_time, running, notes, created_at, updated_at) VALUES (?,?,?,?,NULL,1,'',?,?)",[$id,my_id(),$date,$startTime,$now,$now]);
         entry_set_tours($id,$tourIds);
     });
     result(['ok'=>true,'entry'=>entry_one($id)]);
@@ -525,7 +582,7 @@ if ($action==='upload' && $method==='POST') {
     $photo=['id'=>$photoId,'name'=>norm((string)$f['name'],120),'file'=>$filename,'mime'=>$mime,'size'=>(int)filesize($f['tmp_name'])];
     // Zeile zuerst (Grenzen geprüft unter Sperre), dann die Datei; scheitert die Datei, Zeile wieder weg.
     db_tx(function () use ($entryId,$issueId,$photo) {
-        if (!db_row('SELECT id FROM radpate_entries WHERE id=? FOR UPDATE',[$entryId])) fail('Eintrag nicht gefunden.',404);
+        entry_lock($entryId);
         if ((int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE entry_id=?',[$entryId])>=40) fail('Maximal 40 Fotos je Kontrollfahrt.');
         if ($issueId==='') {
             if ((int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE entry_id=? AND issue_id IS NULL',[$entryId])>=8) fail('Maximal 8 allgemeine Fotos.');
@@ -546,7 +603,8 @@ if ($action==='upload' && $method==='POST') {
 }
 if ($action==='deletePhoto' && $method==='POST') {
     $id=(string)(post_json()['id']??'');
-    $row=db_row('SELECT id, file FROM radpate_photos WHERE id=?',[$id]) ?? fail('Foto nicht gefunden.',404);
+    $row=db_row('SELECT p.id, p.file, e.user_id FROM radpate_photos p JOIN radpate_entries e ON e.id=p.entry_id WHERE p.id=?',[$id]) ?? fail('Foto nicht gefunden.',404);
+    require_owner($row);
     dbq('DELETE FROM radpate_photos WHERE id=?',[$id]);
     delete_photo_rows_files([$row]);
     result(['ok'=>true]);
@@ -554,8 +612,10 @@ if ($action==='deletePhoto' && $method==='POST') {
 if ($action==='photo' && $method==='GET') {
     $pid=(string)($_GET['id']??'');
     if (!preg_match('/^[0-9a-f]{24}$/',$pid)) fail('Foto nicht gefunden.',404);
-    $metadata=db_row('SELECT file, mime FROM radpate_photos WHERE id=?',[$pid]);
+    $metadata=db_row('SELECT p.file, p.mime, p.issue_id, e.user_id FROM radpate_photos p JOIN radpate_entries e ON e.id=p.entry_id WHERE p.id=?',[$pid]);
     if (!$metadata) fail('Foto nicht gefunden.',404);
+    // Mängelfotos sehen alle; allgemeine Fotos einer Fahrt nur Ersteller und Admin.
+    if ($metadata['issue_id']===null && !is_admin() && (int)$metadata['user_id']!==my_id()) fail('Foto nicht gefunden.',404);
     $file=storage().'/photos/'.basename($metadata['file']);
     if (!is_file($file)) fail('Foto nicht gefunden.',404);
     $mime=(string)$metadata['mime'];
@@ -571,24 +631,62 @@ if ($action==='photo' && $method==='GET') {
     readfile($file); exit;
 }
 if ($action==='export' && $method==='GET') {
+    require_admin();
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="radwegpate-tagebuch-'.date('Y-m-d').'.json"');
     echo json_encode(['exportedAt'=>gmdate('c'),'routes'=>routes_all(),'entries'=>entries_load(),'mapData'=>map_info()],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 if ($action==='password' && $method==='POST') {
     $in=post_json();
-    $old=(string)($in['old']??'');$new=(string)($in['new']??'');
-    if (!password_verify($old,(string)setting('password_hash'))) fail('Das bisherige Passwort ist nicht korrekt.');
-    if (strlen($new)<12 || strlen($new)>256) fail('Neues Passwort: 12 bis 256 Zeichen.');
-    $pwv=db_tx(function () use ($new) {
-        $v=(int)db_val("SELECT `value` FROM radpate_settings WHERE `name`='password_version' FOR UPDATE")+1;
-        setting_set('password_hash',password_hash($new,PASSWORD_DEFAULT));
-        setting_set('password_changed_at',gmdate('c'));
-        setting_set('password_version',(string)$v);
-        return $v;
-    });
-    start_session_for_user($pwv); // diese Sitzung bleibt, alle anderen sind abgemeldet
+    $old=(string)($in['old']??'');
+    $hash=(string)db_val('SELECT password_hash FROM radpate_users WHERE id=?',[my_id()]);
+    if (!password_verify($old,$hash)) fail('Das bisherige Passwort ist nicht korrekt.');
+    $new=valid_new_password($in['new']??'');
+    if (hash_equals($old,$new)) fail('Das neue Passwort muss sich vom bisherigen unterscheiden.');
+    dbq('UPDATE radpate_users SET password_hash=?, must_change_pw=0, password_version=password_version+1 WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),my_id()]);
+    start_session_for_user(db_row('SELECT * FROM radpate_users WHERE id=?',[my_id()])); // diese Sitzung bleibt, alle anderen sind abgemeldet
     result(['ok'=>true]);
+}
+
+// ── Benutzerverwaltung (nur Admin) ──
+if ($action==='users' && $method==='GET') {
+    require_admin();
+    $rows=db_all('SELECT u.*, (SELECT COUNT(*) FROM radpate_entries e WHERE e.user_id=u.id) AS entries FROM radpate_users u ORDER BY u.active DESC, u.name');
+    result(['ok'=>true,'users'=>array_map('user_out',$rows)]);
+}
+if ($action==='userSave' && $method==='POST') {
+    require_admin();
+    $in=post_json();
+    $id=(int)($in['id']??0);
+    $name=valid_user_name($in['name']??'');
+    $role=(string)($in['role']??'pate');
+    if (!in_array($role,USER_ROLES,true)) fail('Unbekannte Rolle.');
+    $active=array_key_exists('active',$in)?(bool)$in['active']:true;
+    $pw=(string)($in['password']??'');
+    $saved=db_tx(function () use ($id,$name,$role,$active,$pw) {
+        $dupe=db_val('SELECT id FROM radpate_users WHERE name=? AND id<>?',[$name,$id]);
+        if ($dupe!==null) fail('Diesen Namen gibt es schon.');
+        if ($id===0) {
+            $hash=password_hash(valid_new_password($pw),PASSWORD_DEFAULT);
+            dbq('INSERT INTO radpate_users (name, password_hash, role, active, must_change_pw, password_version, created_at) VALUES (?,?,?,?,1,1,?)',[$name,$hash,$role,$active?1:0,db_now()]);
+            return (int)db()->lastInsertId();
+        }
+        $old=db_row('SELECT * FROM radpate_users WHERE id=? FOR UPDATE',[$id]) ?? fail('Benutzer nicht gefunden.',404);
+        if ($id===my_id() && ($role!=='admin' || !$active)) fail('Die eigene Admin-Rolle bzw. den eigenen Zugang kann man nicht entziehen.');
+        if ($id===my_id() && $pw!=='') fail('Das eigene Passwort bitte über das Zahnrad ändern.');
+        if ($old['role']==='admin' && ($role!=='admin' || !$active)) {
+            $admins=(int)db_val("SELECT COUNT(*) FROM radpate_users WHERE role='admin' AND active=1 AND id<>? FOR UPDATE",[$id]);
+            if ($admins<1) fail('Es muss mindestens ein aktiver Admin bleiben.');
+        }
+        dbq('UPDATE radpate_users SET name=?, role=?, active=? WHERE id=?',[$name,$role,$active?1:0,$id]);
+        // Neues Startpasswort: muss beim nächsten Login geändert werden, offene Sitzungen enden.
+        if ($pw!=='') dbq('UPDATE radpate_users SET password_hash=?, must_change_pw=1, password_version=password_version+1 WHERE id=?',[password_hash(valid_new_password($pw),PASSWORD_DEFAULT),$id]);
+        // Rolle oder Zugang geändert: offene Sitzungen beenden, damit die neue Rolle sofort gilt.
+        elseif ($old['role']!==$role || (int)$old['active']!==($active?1:0)) dbq('UPDATE radpate_users SET password_version=password_version+1 WHERE id=?',[$id]);
+        return $id;
+    });
+    $row=db_row('SELECT u.*, (SELECT COUNT(*) FROM radpate_entries e WHERE e.user_id=u.id) AS entries FROM radpate_users u WHERE u.id=?',[$saved]);
+    result(['ok'=>true,'user'=>user_out($row)]);
 }
 
 // KML wird im Browser geparst. Linien, explizite Wendepunkte und Ebenenzuordnung werden gespeichert.
@@ -597,6 +695,7 @@ if ($action==='mapData' && $method==='GET') {
     result(['ok'=>true,'map'=>map_info()]);
 }
 if ($action==='mapImport' && $method==='POST') {
+    require_admin();
     if ((int)($_SERVER['CONTENT_LENGTH']??0)>10000000) fail('Import zu groß (maximal 10 MB).',413);
     $in=post_json();
     $sources=$in['sources']??null;
@@ -663,6 +762,7 @@ if ($action==='mapImport' && $method==='POST') {
     result(['ok'=>true,'sources'=>count($clean),'lines'=>$totalLines,'points'=>$totalPoints]);
 }
 if ($action==='mapAssign' && $method==='POST') {
+    require_admin();
     $in=post_json();
     db_tx(function () use ($in) {
         $available=array_column(db_all('SELECT id FROM radpate_map_sources ORDER BY position FOR UPDATE'),'id');

@@ -65,6 +65,15 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
 - Die App liefert der Oberfläche dieselbe JSON-Form wie früher (`entries_load()`): Änderungen an
   der Form nur erweiternd.
 - Fotos bleiben Dateien in `radwegpate_private/photos/`; die DB kennt nur den Verweis.
+- **Benutzer (ab 3.10.0):** Anmeldung mit Name + Passwort (`radpate_users`). Rollen `admin` und `pate`.
+  - Pate: sieht und ändert nur **eigene** Kontrollfahrten; **Mängel sehen alle** (fremde Fahrten kommen
+    nur als Hülle mit ihren Mängeln, ohne Notiz/Zeiten/Fahrt-GPS/allgemeine Fotos); Mangel-Status
+    erledigt/offen darf jeder setzen (`status_by`).
+  - Admin: alle Fahrten, Benutzerverwaltung, Touren, KML, Sicherung (`require_admin()`).
+  - Neue Benutzer legt der Admin mit Startpasswort an; bis zum eigenen Passwort sind Änderungen gesperrt.
+  - Benutzer werden nie gelöscht, nur deaktiviert. Rolle/Zugang/Passwort geändert → Sitzungen enden
+    (`password_version`).
+  - Neue Schreib-Aktion: `entry_lock($id)` prüft den Besitz; Admin-Aktionen mit `require_admin()`.
 - **Der Datenordner liegt im Webroot** und ist dreifach gesperrt (`public/.htaccess`,
   eigene `.htaccess` im Ordner — legt der Deploy an —, Deploy-Prüfung von außen).
   Sein Name `radwegpate_private` steht an vier Stellen: `config.php`, `public/.htaccess`,

@@ -68,6 +68,9 @@ $check(db_val("SELECT link_komoot FROM radpate_routes WHERE id='02'") === 'https
 $check(db_val("SELECT route_id FROM radpate_map_sources WHERE id='aaaaaaaaaaaaaaa1'") === '01' && db_val("SELECT route_id FROM radpate_map_sources WHERE id='aaaaaaaaaaaaaaa2'") === null, 'KML-Zuordnung');
 $check(json_decode((string)db_val("SELECT line_data FROM radpate_map_sources WHERE id='aaaaaaaaaaaaaaa1'"), true) == [[[10.0, 48.3], [10.01, 48.31]]], 'KML-Linie unverändert');
 $check(setting('map_file_name') === 'Radwege Senden.kml', 'KML-Dateiname');
+$u = db_row("SELECT * FROM radpate_users WHERE name='Siglinde'");
+$check($u && $u['role'] === 'admin' && (int)$u['password_version'] === 3 && str_starts_with($u['password_hash'], '$2y$'), 'bisheriger Zugang → Admin Siglinde');
+$check((int)db_val('SELECT COUNT(*) FROM radpate_entries WHERE user_id IS NULL') === 0, 'alle Fahrten gehören Siglinde');
 
 [$rc, $out] = $run('import-json.php', '--run');
 $check($rc === 0 && str_contains($out, 'Bereits übernommen') && (int)db_val('SELECT COUNT(*) FROM radpate_entries') === 3, 'zweiter Lauf ändert nichts');

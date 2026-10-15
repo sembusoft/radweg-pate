@@ -609,3 +609,14 @@ body:has(#trip-view:not([hidden])) .toast { bottom: calc(var(--nav-h) + 84px + e
 .dl-card { max-width: 480px; margin: 0 auto; display: grid; gap: 12px; padding: 20px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .dl-card h1 { font-size: 1.375rem; margin: 0; }
 .dl-steps { margin: 4px 0 0; padding-left: 1.25rem; }
+
+/* Benutzer (Mehrbenutzer ab 3.10) */
+.user-list { display: grid; gap: 8px; margin: 4px 0 12px; }
+.user-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: var(--bw) solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.user-row.inactive { opacity: .7; border-style: dashed; }
+.user-main { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.user-main strong { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 700; }
+.check-row input { width: 22px; height: 22px; margin: 0; }
+.dialog-inline { margin: -6px 0 6px; }
+.message.warn { margin: 0 0 12px; padding: 12px; border-radius: var(--radius-sm); color: var(--warning-text); background: var(--warning-bg); border: var(--bw) solid currentColor; }

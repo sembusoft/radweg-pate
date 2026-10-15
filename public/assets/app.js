@@ -1,7 +1,7 @@
 'use strict';
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-const state = { csrf:'', routes:[], entries:[], installed:false, loggedIn:false, tab:'map', coords:null, editing:null, mapData:null, leafletMap:null, layerGroups:{},selectedRoute:'01',visibleRoutes:null,mapShown:false,startTourIds:[] };
+const state = { csrf:'', me:null, users:[], routes:[], entries:[], installed:false, loggedIn:false, tab:'map', coords:null, editing:null, mapData:null, leafletMap:null, layerGroups:{},selectedRoute:'01',visibleRoutes:null,mapShown:false,startTourIds:[] };
 // Externe Karten-Ziellinks verwenden ausschließlich echte KML-Wendepunkt-Placemarks. Keine KML-Route wird extern versprochen.
 const STATUSES = { gut:'In Ordnung', hinweis:'Hinweis', mangel:'Mangel' };
 // Tabler-Icon aus dem Sprite (assets/icons.svg). Nur Namen verwenden, die in scripts/build-icons.mjs stehen –
@@ -26,25 +26,25 @@ async function api(action, method='GET', payload=null){
 async function boot(){
   try{
     const s=await api('status');state.csrf=s.csrf;state.installed=s.installed;state.loggedIn=s.loggedIn;
-    if(s.loggedIn){await loadData();showMain();await loadMap();}else showAuth(false);
+    if(s.loggedIn){await loadData();showMain();await loadMap();requirePasswordChange();}else showAuth(false);
   }catch(err){showAuth(false);$('#auth-error').textContent=err.message;$('#auth-error').hidden=false;}
 }
 function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
  const setup=!state.installed;
  $('#auth-title').textContent=setup?'Einmalig einrichten':'Willkommen zurück';
- $('#auth-desc').textContent=setup?'Einrichtungscode eingeben und dein persönliches Passwort festlegen.':'Melde dich an, um Touren und Tagebuch zu öffnen.';
+ $('#auth-desc').textContent=setup?'Einrichtungscode eingeben, deinen Namen und dein Passwort festlegen. Du wirst Admin.':'Melde dich mit deinem Namen an, um Touren und Tagebuch zu öffnen.';
  $('#setup-code-wrap').hidden=!setup;$('#setup-code').required=setup;
  $('#auth-password').setAttribute('autocomplete',setup?'new-password':'current-password');
  $('#auth-submit').textContent=setup?'App einrichten':'Anmelden';
  if(force)toast('Bitte erneut anmelden.',true);
 }
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
-async function loadData(){const data=await api('bootstrap');state.gpxToken=data.gpxToken||'';state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
+async function loadData(){const data=await api('bootstrap');state.me=data.me||null;state.gpxToken=data.gpxToken||'';state.routes=data.routes;state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
-function selectTab(tab){state.tab=tab;setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
+function selectTab(tab){state.tab=tab;if(tab==='settings'&&isAdmin())loadUsers();setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
 function entryIssues(e){return Array.isArray(e.issues)?e.issues:((e.status==='mangel'||e.status==='hinweis'||e.issueKind||e.place)?[{id:'i_'+e.id,tourId:e.tourId,kind:ISSUE_KINDS.includes(e.issueKind)?e.issueKind:'Sonstiges',place:e.place||'',description:'',status:'offen',coords:e.coords||null,photos:[]}]:[]);}
-function counts(tourId){return state.entries.filter(e=>entryRoutes(e).includes(tourId));}
+function counts(tourId){return myEntries().filter(e=>entryRoutes(e).includes(tourId));}
 const ISSUE_KINDS=['Belag','Beschilderung','Hindernis','Sicherheit','Verschmutzung','Bewuchs','Sonstiges'];
 const ISSUE_STATES={offen:'Offen',gemeldet:'Gemeldet',bearbeitung:'In Bearbeitung',erledigt:'Erledigt'};
 function issueCount(e){return entryIssues(e).length;}
@@ -57,6 +57,24 @@ function pendingIssues(ids){
   return out.sort((a,b)=>a.entry.date.localeCompare(b.entry.date));
 }
 function allIssues(){return state.entries.flatMap(e=>entryIssues(e).map(issue=>({entry:e,issue})));}
+// ── Benutzer: Paten sehen eigene Fahrten (Admin: alle), Mängel sehen alle ──
+const isAdmin=()=>state.me?.role==='admin';
+const isMine=e=>e.canEdit!==false;            // eigene Fahrt bzw. Admin
+function myEntries(){return state.entries.filter(isMine);}
+function byLabel(e){return !e.own&&e.userName?` · von ${esc(e.userName)}`:'';}
+function applyRole(){
+ const admin=isAdmin();
+ for(const el of $$('[data-admin-only]'))el.hidden=!admin;
+ for(const el of $$('[data-pate-only]'))el.hidden=admin;
+ $('#settings-sub').textContent=admin?'Benutzer, Touren und KML-Ebenen, Import und Datensicherung.':'Hinweise zur App.';
+ $('#whoami').textContent=state.me?`Angemeldet als ${state.me.name} · ${admin?'Admin':'Pate'}`:'';
+ $('#pw-required').hidden=!state.me?.mustChangePassword;
+}
+function requirePasswordChange(){
+ if(!state.me?.mustChangePassword)return;
+ applyAppearance();applyRole();$('#prefs-dialog').showModal();
+ setTimeout(()=>{$('#password-section').scrollIntoView({block:'start'});$('#password-form [name="old"]').focus();},60);
+}
 
 function newIssueId(){return 'i_'+[...crypto.getRandomValues(new Uint8Array(12))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function routeCard(r){
@@ -64,7 +82,7 @@ function routeCard(r){
  const hasMap=typeof routeLines==='function' && routeLines(r.id).length>0;
  const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
  return `<article class="route-card">
-  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div><button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button></div>
+  <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div>${isAdmin()?`<button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button>`:''}</div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
   <div class="route-actions"><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button>${mapLinks}</div>
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
@@ -72,8 +90,10 @@ function routeCard(r){
 }
 function render(){
  $('#stat-routes').textContent=state.routes.length;
- $('#stat-entries').textContent=state.entries.length;
- $('#stat-entries-label').textContent=state.entries.length===1?'Prüfung':'Prüfungen';
+ const mine=myEntries().length;
+ $('#stat-entries').textContent=mine;
+ $('#stat-entries-label').textContent=mine===1?'Prüfung':'Prüfungen';
+ applyRole();
  const openIssues=allIssues().filter(item=>isPending(item.issue)).length;
  $('#stat-issues').textContent=openIssues;
  $('#kpi-issues').classList.toggle('kpi-warn',openIssues>0);
@@ -96,7 +116,9 @@ function renderDiary(){
    if(status==='mangel')return issues.length>0;
    if(status==='gut')return issues.length===0;
    return true;};
- const matches=state.entries.filter(e=>(!tour||entryRoutes(e).includes(tour))&&statusMatch(e));
+ // Eigene Fahrten (Admin: alle). Beim Filter auf Mängel auch fremde Fahrten – Mängel sehen alle.
+ const withIssues=status==='offen'||status==='mangel';
+ const matches=state.entries.filter(e=>(isMine(e)||(withIssues&&entryIssues(e).length))&&(!tour||entryRoutes(e).includes(tour))&&statusMatch(e));
  const routes=new Map(state.routes.map(r=>[r.id,r]));
  $('#diary-list').innerHTML=matches.length?matches.map(e=>{
    const ids=entryRoutes(e),issues=entryIssues(e),pendingCount=issues.filter(isPending).length;
@@ -108,17 +130,17 @@ function renderDiary(){
      const pics=(issue.photos||[]).length?`<div class="photos-row">${issue.photos.map(photo=>`<a href="api.php?action=photo&id=${photo.id}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${photo.id}&thumb=1" width="86" height="72" loading="lazy" alt="Mängelfoto ${esc(photo.name)}"></a>`).join('')}</div>`:'';
      const isDone=!isPending(issue);
      const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?ic('arrow-back-up')+' Wieder öffnen':ic('check')+' Als erledigt markieren'}</button>`;
-     return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${issue.time?esc(issue.time)+' · ':''}${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
+     return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${issue.time?esc(issue.time)+' · ':''}${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}${issue.statusBy?' · '+esc(issue.statusBy):''}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
    }).join('')}</div>`:'';
-   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}<div class="entry-bottom">${e.running?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div></article>`;
- }).join(''):'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>';
+   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt${byLabel(e)} · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}${isMine(e)?`<div class="entry-bottom">${e.running&&e.own?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div>`:''}</article>`;
+ }).join(''):(withIssues?'<div class="empty">Keine passenden Mängel.</div>':'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>');
 }
 // ── Laufende Kontrollfahrt ─────────────────────────────────────────────
 // Eine Fahrt wird beim Start angelegt (running=true); Mängel werden einzeln gespeichert
 // (issueSave), die Seite bleibt offen. "Fahrt beenden" setzt Endzeit und Notiz.
 const nowTime=()=>{const d=new Date();return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 const mapsLink=c=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat+','+c.lon)}`;
-function runningTrip(){return state.entries.find(e=>e.running);}
+function runningTrip(){return state.entries.find(e=>e.running&&e.own);}
 function tripEntry(){return state.entries.find(e=>e.id===state.trip);}
 function tourLabel(ids){return ids.map(id=>`${id} · ${routeById(id)?.name||'Tour'}`).join(' / ');}
 function timeSpan(e){return e.startTime?(e.endTime?`${e.startTime}–${e.endTime}`:`ab ${e.startTime}`):'';}
@@ -134,7 +156,7 @@ function photoThumbs(photos,max=5){return (photos||[]).slice(0,max).map(p=>`<a h
 function openIssueCard(entry,issue){
  const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="${mapsLink(issue.coords)}">${ic('map-pin')} Standort</a>`:'<span class="smallnote">Kein GPS-Punkt</span>';
  const pics=photoThumbs(issue.photos);
- return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}${issue.time?' · '+esc(issue.time)+' Uhr':''}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">${ic('check')} Erledigt</button></div></article>`;
+ return `<article class="pending-card"><div class="pending-top"><strong>${esc(issue.tourId)} · ${esc(issue.kind||'Sonstiges')}</strong><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div><p class="pending-place">${esc(issue.place||'Ort nicht angegeben')}</p>${issue.description?`<p class="pending-desc">${esc(issue.description)}</p>`:''}<p class="smallnote">Erfasst am ${textDate(entry.date)}${issue.time?' · '+esc(issue.time)+' Uhr':''}${byLabel(entry)}</p>${pics?`<div class="photos-row pending-photos">${pics}</div>`:''}<div class="pending-bottom">${gps}<button class="btn primary small" type="button" data-issue-toggle="${esc(entry.id)}:${esc(issue.id)}" data-target-status="erledigt">${ic('check')} Erledigt</button></div></article>`;
 }
 function tripIssueCard(entry,issue){
  const gps=issue.coords?`<a class="text-btn" target="_blank" rel="noopener noreferrer" href="${mapsLink(issue.coords)}">${ic('map-pin')} Standort</a>`:'<span class="smallnote">Kein GPS-Punkt</span>';
@@ -384,17 +406,56 @@ function setupAppearance(){
  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(storedPref('radwegpate-theme','auto')==='auto')applyAppearance();});
  applyAppearance();
 }
+// ── Benutzerverwaltung (nur Admin) ──
+async function loadUsers(){
+ if(!isAdmin())return;
+ try{const d=await api('users');state.users=d.users||[];renderUsers();}catch(err){toast(err.message,true);}
+}
+function renderUsers(){
+ $('#user-list').innerHTML=state.users.map(u=>`<div class="user-row${u.active?'':' inactive'}"><div class="user-main"><strong>${ic('user')} ${esc(u.name)}${u.id===state.me?.id?' <span class="chip">du</span>':''}</strong><span class="smallnote">${u.role==='admin'?'Admin':'Pate'} · ${u.entries??0} ${u.entries===1?'Fahrt':'Fahrten'}${u.active?'':' · deaktiviert'}${u.mustChangePassword?' · Startpasswort':''}${u.lastLoginAt?' · zuletzt '+new Date(u.lastLoginAt).toLocaleDateString('de-DE'):' · noch nie angemeldet'}</span></div><button type="button" class="icon-button small" data-user-edit="${u.id}" aria-label="${esc(u.name)} bearbeiten" title="Bearbeiten">${ic('pencil')}</button></div>`).join('')||'<p class="smallnote">Noch keine Benutzer.</p>';
+}
+function suggestPassword(){
+ const chars='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+ const r=crypto.getRandomValues(new Uint8Array(16));return [...r].map(b=>chars[b%chars.length]).join('').replace(/(.{4})(?!$)/g,'$1-');
+}
+function openUser(id=0){
+ const u=state.users.find(x=>x.id===id);
+ $('#user-heading').textContent=u?`${u.name} bearbeiten`:'Benutzer anlegen';
+ $('#user-id').value=u?String(u.id):'';
+ $('#user-name').value=u?.name||'';
+ $('#user-role').value=u?.role||'pate';
+ $('#user-active').checked=u?u.active:true;
+ const self=u&&u.id===state.me?.id;
+ $('#user-role').disabled=!!self;$('#user-active').disabled=!!self;
+ $('#user-password').value=u?'':suggestPassword();$('#user-password').required=!u;$('#user-password').disabled=!!self;$('#user-pw-suggest').disabled=!!self;
+ $('#user-pw-label').textContent=u?'Neues Startpasswort (leer = unverändert)':'Startpasswort (mindestens 12 Zeichen)';
+ $('#user-pw-hint').textContent=self?'Dein eigenes Passwort änderst du oben unter dem Zahnrad.':'Das Startpasswort gibst du der Person weiter; sie muss es beim ersten Anmelden ändern.';
+ $('#user-dialog').showModal();
+}
+async function saveUser(ev){
+ ev.preventDefault();
+ const id=Number($('#user-id').value||0),pw=$('#user-password').value.trim();
+ const payload={id,name:$('#user-name').value,role:$('#user-role').value,active:$('#user-active').checked};
+ if(pw)payload.password=pw;
+ try{const d=await api('userSave','POST',payload);$('#user-dialog').close();await loadUsers();
+   toast(pw?`${d.user.name} gespeichert – Startpasswort: ${pw}`:`${d.user.name} gespeichert.`);}catch(err){toast(err.message,true);}
+}
 function setupEvents(){
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
      const setup=!state.installed;
-     const payload=setup?{code:$('#setup-code').value,password:$('#auth-password').value}:{password:$('#auth-password').value};
-     await api(setup?'setup':'login','POST',payload);state.installed=true;state.loggedIn=true;$('#auth-password').value='';await loadData();showMain();await loadMap();toast(setup?'Einrichtung abgeschlossen.':'Willkommen zurück.');
+     const payload={name:$('#auth-name').value,password:$('#auth-password').value};if(setup)payload.code=$('#setup-code').value;
+     await api(setup?'setup':'login','POST',payload);state.installed=true;state.loggedIn=true;$('#auth-password').value='';await loadData();showMain();await loadMap();toast(setup?'Einrichtung abgeschlossen.':`Willkommen zurück, ${state.me?.name||''}.`);requirePasswordChange();
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
- $('#settings-button').addEventListener('click',()=>{applyAppearance();$('#prefs-dialog').showModal();});
+ $('#settings-button').addEventListener('click',()=>{applyAppearance();applyRole();$('#prefs-dialog').showModal();});
+ // Benutzerverwaltung (Admin)
+ $('#user-add').addEventListener('click',()=>openUser());
+ $('#user-list').addEventListener('click',e=>{const b=e.target.closest('[data-user-edit]');if(b)openUser(Number(b.dataset.userEdit));});
+ $('#user-pw-suggest').addEventListener('click',()=>{$('#user-password').value=suggestPassword();$('#user-password').select();});
+ $('#user-form').addEventListener('submit',saveUser);
  $('#new-entry-diary').addEventListener('click',()=>openTripStart([]));
  // Plus in der Tab-Leiste: auf der Karte mit den gewählten Touren vorbelegt.
  $('#mobile-add').addEventListener('click',()=>{
@@ -460,9 +521,9 @@ function setupEvents(){
  $('#export-csv').addEventListener('click',exportCsv);
  $('#password-form').addEventListener('submit',async e=>{
    e.preventDefault();const fd=new FormData(e.target);
-   try{await api('password','POST',{old:fd.get('old'),new:fd.get('new')});e.target.reset();toast('Passwort geändert.');}catch(err){toast(err.message,true);}
+   try{await api('password','POST',{old:fd.get('old'),new:fd.get('new')});e.target.reset();const was=state.me?.mustChangePassword;await refresh();toast('Passwort geändert.');if(was)$('#prefs-dialog').close();}catch(err){toast(err.message,true);}
  });
- $('#logout-button').addEventListener('click',async()=>{try{await api('logout','POST');$('#prefs-dialog').close();state.loggedIn=false;state.entries=[];state.mapData=null;if(state.leafletMap){state.leafletMap.remove();state.leafletMap=null;}showAuth(false);toast('Abgemeldet.');}catch(err){toast(err.message,true);}});
+ $('#logout-button').addEventListener('click',async()=>{try{await api('logout','POST');$('#prefs-dialog').close();state.loggedIn=false;state.me=null;state.users=[];state.entries=[];state.mapData=null;if(state.leafletMap){state.leafletMap.remove();state.leafletMap=null;}showAuth(false);toast('Abgemeldet.');}catch(err){toast(err.message,true);}});
  for(const dialog of $$('.modal'))dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
 }
 async function deleteEntry(id){if(!window.confirm('Diesen Tagebucheintrag samt Fotos wirklich löschen?'))return;try{await api('deleteEntry','POST',{id});await refresh();toast('Eintrag gelöscht.');}catch(err){toast(err.message,true);}}
