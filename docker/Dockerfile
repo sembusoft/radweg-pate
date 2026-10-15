@@ -1,10 +1,10 @@
-# Lokale Testumgebung – nah an all-inkl: Apache + PHP 8.3, .htaccess aktiv.
+# Lokale Testumgebung – nah an all-inkl: Apache + PHP 8.3 (gd, pdo_mysql), .htaccess aktiv.
 FROM php:8.3-apache
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libpng-dev libjpeg62-turbo-dev libwebp-dev \
  && docker-php-ext-configure gd --with-jpeg --with-webp \
- && docker-php-ext-install gd \
+ && docker-php-ext-install gd pdo_mysql \
  && rm -rf /var/lib/apt/lists/* \
  && a2enmod headers rewrite \
  && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \

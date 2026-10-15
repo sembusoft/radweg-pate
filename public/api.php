@@ -1,15 +1,13 @@
 <?php
 declare(strict_types=1);
-// RADWEGPATE_CONFIG: nur für die lokale Wegwerf-Testinstanz (docker-compose, Dienst "test"),
-// gesetzt per Apache-SetEnv. Produktiv nicht gesetzt → config.php neben dieser Datei.
-$configFile = (string)(getenv('RADWEGPATE_CONFIG') ?: __DIR__ . '/config.php');
-if (!is_file($configFile)) {
+// Konfiguration: config.php (im Repository) liest die Zugangsdaten aus der .env (nur auf dem Server).
+require __DIR__ . '/config.php';
+if (APP_DB_NAME === '' || APP_DB_USER === '') {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');
-    echo '{"ok":false,"error":"config.php fehlt. Vorlage config.example.php kopieren und anpassen."}';
+    echo json_encode(['ok'=>false,'error'=>APP_ENV_FILE==='' ? '.env fehlt. Vorlage .env.example als .env neben config.php ablegen und ausfüllen.' : '.env unvollständig: DB_NAME und DB_USER eintragen.'], JSON_UNESCAPED_UNICODE);
     exit;
 }
-require $configFile;
 require __DIR__ . '/version.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -35,6 +33,18 @@ function result(array $result, int $code = 200): never {
     exit;
 }
 function fail(string $message, int $code=400): never { result(['ok'=>false,'error'=>$message],$code); }
+
+// Datenbankfehler: kurze Meldung an die App, Einzelheiten ins Server-Log.
+require __DIR__ . '/db/db.php';
+set_exception_handler(function (Throwable $e): void {
+    error_log('Radwegpate: '.get_class($e).': '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine());
+    $code = $e instanceof PDOException ? (string)$e->getCode() : '';
+    if ($code === '42S02') fail('Datenbank ist noch nicht eingerichtet (db/migrate.php ausführen).', 503);
+    if ($e instanceof PDOException || $e instanceof RuntimeException) fail('Datenbank nicht erreichbar. Bitte später erneut versuchen.', 503);
+    fail('Interner Fehler.', 500);
+});
+
+/** Privater Ordner – nur noch für Fotos (Daten liegen in der Datenbank). */
 function storage(): string {
     $dir = APP_DATA_DIR;
     if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
@@ -50,30 +60,6 @@ function storage(): string {
     }
     return $dir;
 }
-function read_json(string $name, array $default=[]): array {
-    $file=storage().'/'.$name.'.json';
-    if (!is_file($file)) return $default;
-    $data=json_decode((string)file_get_contents($file), true);
-    return is_array($data) ? $data : $default;
-}
-function write_json_atomic(string $name,array $data): void {
-    $path=storage().'/'.$name.'.json';
-    $tmp=storage().'/.'.basename($name).'.'.bin2hex(random_bytes(8)).'.tmp';
-    $encoded=json_encode($data,JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    if ($encoded===false || file_put_contents($tmp,$encoded,LOCK_EX)===false) fail('Speichern fehlgeschlagen.',500);
-    @chmod($tmp,0600);
-    if (!rename($tmp,$path)) { @unlink($tmp); fail('Speichern fehlgeschlagen.',500); }
-}
-function update_json(string $name, callable $fn, array $default=[]): mixed {
-    $fp=fopen(storage().'/'.$name.'.lock','c');
-    if (!$fp || !flock($fp,LOCK_EX)) fail('Sperre konnte nicht gesetzt werden.',500);
-    try {
-        $data=read_json($name,$default);
-        $res=$fn($data);
-        write_json_atomic($name,$data);
-        return $res;
-    } finally { flock($fp,LOCK_UN); fclose($fp); }
-}
 function post_json(): array {
     $data=json_decode(file_get_contents('php://input') ?: '{}',true);
     if (!is_array($data)) fail('Ungültige Eingabe.');
@@ -82,33 +68,23 @@ function post_json(): array {
 function check_csrf(): void {
     if (!hash_equals($_SESSION['csrf']??'', $_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('Sicherheitsprüfung fehlgeschlagen. Bitte neu laden.',403);
 }
-function password_version(): int { return (int)(read_json('install')['pwv'] ?? 0); }
+function password_version(): int {
+    static $v=null;
+    return $v ??= (int)(setting('password_version') ?? 0);
+}
 function logged_in(): bool {
-    // Nach einem Passwortwechsel (pwv erhöht) sind alle anderen Sitzungen ungültig.
+    // Nach einem Passwortwechsel (Version erhöht) sind alle anderen Sitzungen ungültig.
     return !empty($_SESSION['logged'])
         && (time() - (int)($_SESSION['last_active']??0)) < 60*60*24*14
         && (int)($_SESSION['pwv'] ?? 0) === password_version();
 }
-function start_session_for_user(): void {
+function start_session_for_user(int $pwv): void {
     session_regenerate_id(true);
-    $_SESSION['logged']=true; $_SESSION['last_active']=time(); $_SESSION['pwv']=password_version();
+    $_SESSION['logged']=true; $_SESSION['last_active']=time(); $_SESSION['pwv']=$pwv;
 }
 function require_login(): void {
     if (!logged_in()) {unset($_SESSION['logged']); fail('Bitte erneut anmelden.',401);}
     $_SESSION['last_active']=time();
-}
-function defaults(): array {
-    // Namen wie die Ebenen der My-Maps-KML (Stand 10/2026). Gilt nur für Neuinstallationen;
-    // bestehende routes.json bleibt unverändert.
-    return [
-        ['id'=>'01','name'=>'West / Illerbrücke Oberkirchberg','type'=>'abfahrt','area'=>'Richtung Iller / westliche Gemeindegrenze','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'02','name'=>'Nord / Freudenegg – Gerlenhofen','type'=>'abfahrt','area'=>'Richtung Aufheim / nördliche Gemeindegrenze','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'03','name'=>'Nordost / Hittistetten','type'=>'abfahrt','area'=>'Nördlicher Bereich Richtung Hittistetten','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'04','name'=>'Ost / Wullenstetten – Witzighausen','type'=>'abfahrt','area'=>'Wullenstetten / Witzighausen / Richtung Weißenhorn','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'05','name'=>'Süd / Richtung Illerzell','type'=>'abfahrt','area'=>'Südlicher Außenbereich von Senden','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'06','name'=>'Südost / Richtung Illerberg','type'=>'abfahrt','area'=>'Südöstlicher Bereich Richtung Illerberg','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Verlauf und Endpunkt noch anhand der Originalkarte prüfen.'],
-        ['id'=>'07','name'=>'Gartenparadies-Runde','type'=>'runde','area'=>'Rosa Rundtour (Originalroute ca. 39,5 km, ohne individuelle Zu-/Rückfahrt)','links'=>['komoot'=>'','google'=>'','apple'=>'','mymaps'=>''],'note'=>'Start / Ende Flurweg 7: individuelle Zu- und Rückfahrt noch prüfen.']
-    ];
 }
 function valid_url(string $url): bool {
     if ($url==='') return true;
@@ -124,26 +100,65 @@ function valid_date(string $date): bool {
     $dt=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
     return $dt && $dt->format('Y-m-d')===$date;
 }
+/** Höchstens 10 Anmeldeversuche je IP in 15 Minuten. */
 function check_login_rate(): void {
-    $ip=(string)($_SERVER['REMOTE_ADDR']??'unknown');
-    $fp=storage().'/attempt_'.hash('sha256',$ip).'.json';
-    $events=json_decode((string)@file_get_contents($fp),true);
-    $events=is_array($events)?$events:[];
-    $events=array_values(array_filter($events, fn($v)=>is_numeric($v)&&$v>time()-900));
-    if (count($events)>=10) fail('Zu viele Anmeldeversuche. In 15 Minuten erneut versuchen.',429);
-    $events[]=time();
-    file_put_contents($fp,json_encode($events),LOCK_EX);
-    // Gelegentlich verwaiste Zähler anderer IPs entfernen (älter als einen Tag).
-    if (random_int(1,20)===1) foreach (glob(storage().'/attempt_*.json') ?: [] as $old) {
-        if (filemtime($old) < time()-86400) @unlink($old);
-    }
+    $ip=hash('sha256',(string)($_SERVER['REMOTE_ADDR']??'unknown'));
+    if (random_int(1,20)===1) dbq('DELETE FROM radpate_login_attempts WHERE attempted_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
+    $n=(int)db_val('SELECT COUNT(*) FROM radpate_login_attempts WHERE ip_hash=? AND attempted_at > UTC_TIMESTAMP() - INTERVAL 15 MINUTE',[$ip]);
+    if ($n>=10) fail('Zu viele Anmeldeversuche. In 15 Minuten erneut versuchen.',429);
+    dbq('INSERT INTO radpate_login_attempts (ip_hash, attempted_at) VALUES (?, UTC_TIMESTAMP())',[$ip]);
 }
-function photo_metadata(string $pid): ?array {
-    foreach (read_json('entries') as $entry) {
-        foreach (($entry['photos']??[]) as $p) if (($p['id']??'')===$pid) return $p;
-        foreach (($entry['issues']??[]) as $issue) foreach (($issue['photos']??[]) as $p) if (($p['id']??'')===$pid) return $p;
+
+// ── Lesemodell: Datenbankzeilen → JSON-Form der App (unverändert gegenüber den JSON-Dateien) ──
+const ROUTE_IDS=['01','02','03','04','05','06','07'];
+function route_out(array $r): array {
+    return ['id'=>$r['id'],'name'=>$r['name'],'type'=>$r['type'],'area'=>$r['area'],'note'=>$r['note'],
+        'km'=>$r['km']===null?null:(float)$r['km'],
+        'links'=>['komoot'=>$r['link_komoot'],'google'=>$r['link_google'],'apple'=>$r['link_apple'],'mymaps'=>$r['link_mymaps']]];
+}
+function routes_all(): array { return array_map('route_out', db_all('SELECT * FROM radpate_routes ORDER BY id')); }
+function coords_out(array $r): ?array { return $r['lat']===null||$r['lon']===null ? null : ['lat'=>(float)$r['lat'],'lon'=>(float)$r['lon']]; }
+function photo_out(array $p): array { return ['id'=>$p['id'],'name'=>$p['name'],'file'=>$p['file'],'mime'=>$p['mime'],'size'=>(int)$p['size']]; }
+function issue_out(array $i, array $photos): array {
+    return ['id'=>$i['id'],'tourId'=>$i['route_id'],'kind'=>$i['kind'],'time'=>db_hm($i['issue_time']),
+        'place'=>$i['place'],'description'=>$i['description'],'status'=>$i['status'],'coords'=>coords_out($i),
+        'photos'=>$photos,'createdAt'=>db_iso($i['created_at']),'completedAt'=>db_iso($i['completed_at'])];
+}
+/** Kontrollfahrten mit Touren, Mängeln und Fotos. $id: nur diese eine (oder [] wenn nicht vorhanden). */
+function entries_load(?string $id=null): array {
+    $where=$id===null?'':' WHERE entry_id = ?'; $p=$id===null?[]:[$id];
+    $rows=db_all('SELECT * FROM radpate_entries'.($id===null?'':' WHERE id = ?').' ORDER BY trip_date, created_at',$p);
+    if (!$rows) return [];
+    $tours=[]; foreach (db_all('SELECT entry_id, route_id FROM radpate_entry_routes'.$where.' ORDER BY position, route_id',$p) as $r) $tours[$r['entry_id']][]=$r['route_id'];
+    $photos=[]; foreach (db_all('SELECT * FROM radpate_photos'.$where.' ORDER BY position, created_at',$p) as $r) $photos[$r['entry_id']][$r['issue_id']??''][]=photo_out($r);
+    $issues=[]; foreach (db_all('SELECT * FROM radpate_issues'.$where.' ORDER BY position, created_at',$p) as $r) $issues[$r['entry_id']][]=issue_out($r,$photos[$r['entry_id']][$r['id']]??[]);
+    $out=[];
+    foreach ($rows as $e) {
+        $ids=$tours[$e['id']]??[]; $iss=$issues[$e['id']]??[];
+        $out[]=['id'=>$e['id'],'createdAt'=>db_iso($e['created_at']),'updatedAt'=>db_iso($e['updated_at']),
+            'tourIds'=>$ids,'tourId'=>$ids[0]??null,'date'=>$e['trip_date'],
+            'startTime'=>db_hm($e['start_time']),'endTime'=>db_hm($e['end_time']),'running'=>(bool)$e['running'],
+            'status'=>entry_status($iss),'notes'=>$e['notes'],'coords'=>coords_out($e),
+            'issues'=>$iss,'photos'=>$photos[$e['id']]['']??[]];
     }
-    return null;
+    return $out;
+}
+function entry_one(string $id): array { return entries_load($id)[0] ?? fail('Kontrollfahrt nicht gefunden.',404); }
+/** Kontrollfahrt sperren (innerhalb einer Transaktion) – parallele Änderungen warten. */
+function entry_lock(string $id): array {
+    return db_row('SELECT * FROM radpate_entries WHERE id = ? FOR UPDATE',[$id]) ?? fail('Kontrollfahrt nicht gefunden.',404);
+}
+function entry_tour_ids(string $id): array {
+    return array_column(db_all('SELECT route_id FROM radpate_entry_routes WHERE entry_id=? ORDER BY position, route_id',[$id]),'route_id');
+}
+function entry_set_tours(string $id, array $tourIds): void {
+    dbq('DELETE FROM radpate_entry_routes WHERE entry_id=?',[$id]);
+    foreach ($tourIds as $pos=>$tid) dbq('INSERT INTO radpate_entry_routes (entry_id, route_id, position) VALUES (?,?,?)',[$id,$tid,$pos]);
+}
+function entry_touch(string $id): void { dbq('UPDATE radpate_entries SET updated_at=? WHERE id=?',[db_now(),$id]); }
+/** Fotodateien (Datei + Vorschau) zu Fotozeilen löschen – erst NACH dem Commit aufrufen. */
+function delete_photo_rows_files(array $rows): void {
+    foreach ($rows as $p) if (!empty($p['file'])) delete_photo_files((string)$p['file'],(string)$p['id']);
 }
 
 /**
@@ -195,7 +210,7 @@ $action=(string)($_GET['action']??'status');
 $method=(string)($_SERVER['REQUEST_METHOD']??'GET');
 // dl.<host> dient nur der GPX-Download-Seite (gpx.php): dort gibt es nur status und gpx (mit Schlüssel).
 if (str_starts_with(strtolower((string)($_SERVER['HTTP_HOST']??'')),'dl.') && !in_array($action,['status','gpx'],true)) fail('Nicht verfügbar.',404);
-$installed=is_file(storage().'/install.json');
+$installed=setting('password_hash')!==null;
 
 if ($action==='status' && $method==='GET') {
     result(['ok'=>true,'installed'=>$installed,'loggedIn'=>$installed && logged_in(), 'csrf'=>$_SESSION['csrf'], 'version'=>APP_VERSION]);
@@ -210,21 +225,26 @@ if ($action==='setup' && $method==='POST') {
     if (!hash_equals($token, (string)($data['code']??''))) fail('Einrichtungscode stimmt nicht.',403);
     $pw=(string)($data['password']??'');
     if (strlen($pw)<12 || strlen($pw)>256) fail('Passwort muss 12 bis 256 Zeichen haben.');
-    $path=storage().'/install.json';
-    $file=@fopen($path,'x');
-    if (!$file) fail('Bereits eingerichtet.',409);
-    fwrite($file, json_encode(['password_hash'=>password_hash($pw,PASSWORD_DEFAULT),'created_at'=>gmdate('c'),'pwv'=>1]));
-    fclose($file);
-    @chmod($path,0600);
-    start_session_for_user();
+    // INSERT ohne ON DUPLICATE: kommen zwei Einrichtungen gleichzeitig, gewinnt genau eine.
+    try {
+        db_tx(function () use ($pw) {
+            dbq("INSERT INTO radpate_settings (`name`,`value`) VALUES ('password_hash', ?)",[password_hash($pw,PASSWORD_DEFAULT)]);
+            setting_set('password_version','1');
+            setting_set('installed_at',gmdate('c'));
+        });
+    } catch (PDOException $e) {
+        if ((string)$e->getCode()==='23000') fail('Bereits eingerichtet.',409);
+        throw $e;
+    }
+    start_session_for_user(1);
     result(['ok'=>true]);
 }
 if ($action==='login' && $method==='POST') {
     check_csrf();
     check_login_rate();
     $pw=(string)(post_json()['password']??'');
-    if (!$installed || !password_verify($pw,(string)(read_json('install')['password_hash']??''))) fail('Passwort ist nicht korrekt.',401);
-    start_session_for_user();
+    if (!$installed || !password_verify($pw,(string)setting('password_hash'))) fail('Passwort ist nicht korrekt.',401);
+    start_session_for_user(password_version());
     result(['ok'=>true]);
 }
 if ($action==='logout' && $method==='POST') {
@@ -233,22 +253,19 @@ if ($action==='logout' && $method==='POST') {
     session_regenerate_id(true);
     result(['ok'=>true]);
 }
-// GPX-Schlüssel: Die Homescreen-App auf dem iPhone öffnet GPX in einem eigenen Browserfenster
-// (mit „Fertig“-Knopf). Dieses Fenster teilt die Cookies der App nicht – deshalb trägt der Link einen
-// zeitlich begrenzten Schlüssel, der NUR den GPX-Download erlaubt (12 h, je Sitzung, serverseitig gespeichert).
+// GPX-Schlüssel: Die Homescreen-App auf dem iPhone öffnet GPX über dl.<host>/gpx.php in einem eigenen
+// Fenster. Dieses teilt die Cookies der App nicht – deshalb trägt der Link einen zeitlich begrenzten
+// Schlüssel, der NUR den GPX-Download erlaubt (12 h, je Sitzung, in radpate_gpx_tokens).
 const GPX_TOKEN_TTL = 12 * 3600;
 function gpx_token_valid(string $token): bool {
     if (!preg_match('/^[a-f0-9]{32}$/',$token)) return false;
-    $tokens=read_json('gpx_tokens');
-    return isset($tokens[$token]) && (int)$tokens[$token] > time();
+    return db_val('SELECT 1 FROM radpate_gpx_tokens WHERE token=? AND expires_at > UTC_TIMESTAMP()',[$token])!==null;
 }
 function issue_gpx_token(): string {
     if (!empty($_SESSION['gpxToken']) && (int)($_SESSION['gpxTokenExp']??0) > time()+3600) return (string)$_SESSION['gpxToken'];
     $token=bin2hex(random_bytes(16)); $exp=time()+GPX_TOKEN_TTL;
-    update_json('gpx_tokens',function (&$tokens) use ($token,$exp) {
-        $tokens=array_filter($tokens,fn($e)=>(int)$e>time()); // abgelaufene entfernen
-        $tokens[$token]=$exp; return true;
-    });
+    dbq('DELETE FROM radpate_gpx_tokens WHERE expires_at <= UTC_TIMESTAMP()');
+    dbq('INSERT INTO radpate_gpx_tokens (token, expires_at) VALUES (?,?)',[$token,gmdate('Y-m-d H:i:s',$exp)]);
     $_SESSION['gpxToken']=$token; $_SESSION['gpxTokenExp']=$exp;
     return $token;
 }
@@ -258,41 +275,40 @@ if (!$gpxByToken) {
     if ($method==='POST') check_csrf();
 }
 
-
+/** KML-Daten in der bisherigen Form: sources[], assignments{ebene: tour}, importedAt, fileName. */
 function map_info(): array {
-    return read_json('map_data', ['sources'=>[], 'assignments'=>[], 'importedAt'=>null, 'fileName'=>'']);
+    $sources=[];$assign=[];
+    foreach (db_all('SELECT id, name, route_id, line_data, turnpoints FROM radpate_map_sources ORDER BY position') as $r) {
+        $sources[]=['id'=>$r['id'],'name'=>$r['name'],'lines'=>json_decode($r['line_data'],true)?:[],'turnpoints'=>json_decode($r['turnpoints'],true)?:[]];
+        $assign[$r['id']]=$r['route_id']??'';
+    }
+    return ['sources'=>$sources,'assignments'=>$assign,'importedAt'=>setting('map_imported_at'),'fileName'=>setting('map_file_name')??''];
 }
 function map_valid_id(string $value): bool { return preg_match('/^[a-f0-9]{16}$/', $value)===1; }
 function gpx_escape(string $s): string { return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8'); }
-if ($action==='bootstrap' && $method==='GET') result(['ok'=>true,'routes'=>read_json('routes',defaults()),'entries'=>read_json('entries'),'gpxToken'=>issue_gpx_token()]);
+if ($action==='bootstrap' && $method==='GET') result(['ok'=>true,'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
 if ($action==='route' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['id']??'');
-    if (!in_array($id,['01','02','03','04','05','06','07'],true)) fail('Unbekannte Tour.');
-    $out=update_json('routes',function (&$routes) use ($in,$id) {
-        foreach ($routes as &$route) if ($route['id']===$id) {
-            $route['name']=norm((string)($in['name']??''),90);
-            if (!$route['name']) fail('Name darf nicht leer sein.');
-            $route['area']=norm((string)($in['area']??''),180);
-            $route['note']=norm((string)($in['note']??''),1000);
-            $km=$in['km']??null;
-            if ($km!==null && $km!=='') {
-                if (!is_numeric($km) || (float)$km<0.1 || (float)$km>999) fail('Ungültige Kilometerangabe.');
-                $route['km']=round((float)$km,1);
-            } else { $route['km']=null; }
-            if (isset($in['links']) && is_array($in['links'])) foreach (['komoot','google','apple','mymaps'] as $app) {
-                $value=trim((string)($in['links'][$app]??''));
-                if (!valid_url($value)) fail('Bitte gültige HTTPS-Adresse für '. $app .' angeben.');
-                $route['links'][$app]=$value;
-            }
-            return $route;
-        }
-        fail('Tour nicht gefunden.');
-    },defaults());
-    result(['ok'=>true,'route'=>$out]);
+    if (!in_array($id,ROUTE_IDS,true)) fail('Unbekannte Tour.');
+    $old=db_row('SELECT * FROM radpate_routes WHERE id=?',[$id]) ?? fail('Tour nicht gefunden.');
+    $name=norm((string)($in['name']??''),90);
+    if (!$name) fail('Name darf nicht leer sein.');
+    $km=$in['km']??null;
+    if ($km!==null && $km!=='') {
+        if (!is_numeric($km) || (float)$km<0.1 || (float)$km>999) fail('Ungültige Kilometerangabe.');
+        $km=round((float)$km,1);
+    } else { $km=null; }
+    $links=['komoot'=>$old['link_komoot'],'google'=>$old['link_google'],'apple'=>$old['link_apple'],'mymaps'=>$old['link_mymaps']];
+    if (isset($in['links']) && is_array($in['links'])) foreach (array_keys($links) as $app) {
+        $value=trim((string)($in['links'][$app]??''));
+        if (!valid_url($value)) fail('Bitte gültige HTTPS-Adresse für '. $app .' angeben.');
+        $links[$app]=$value;
+    }
+    dbq('UPDATE radpate_routes SET name=?, area=?, note=?, km=?, link_komoot=?, link_google=?, link_apple=?, link_mymaps=? WHERE id=?',
+        [$name,norm((string)($in['area']??''),180),norm((string)($in['note']??''),1000),$km,$links['komoot'],$links['google'],$links['apple'],$links['mymaps'],$id]);
+    result(['ok'=>true,'route'=>route_out(db_row('SELECT * FROM radpate_routes WHERE id=?',[$id]))]);
 }
-// Kompatibilität: Ältere Einträge mit tourId / issueKind / place werden weiter angezeigt.
-// Neue Einträge: tourIds[] und issues[] mit eigenen Fotos und Koordinaten.
 function valid_tour_ids(mixed $raw): array {
     if (!is_array($raw)) fail('Bitte mindestens eine Tour wählen.');
     $ids=[];
@@ -306,7 +322,7 @@ function valid_tour_ids(mixed $raw): array {
 function valid_coords(mixed $raw): ?array {
     if ($raw===null) return null;
     if (!is_array($raw) || !is_numeric($raw['lat']??null) || !is_numeric($raw['lon']??null) || abs((float)$raw['lat'])>90 || abs((float)$raw['lon'])>180) fail('GPS-Position ist ungültig.');
-    return ['lat'=>(float)$raw['lat'],'lon'=>(float)$raw['lon']];
+    return ['lat'=>round((float)$raw['lat'],6),'lon'=>round((float)$raw['lon'],6)];
 }
 function valid_time(mixed $raw, bool $allowEmpty=true): ?string {
     if ($raw===null || $raw==='') { if ($allowEmpty) return null; fail('Uhrzeit fehlt.'); }
@@ -315,8 +331,8 @@ function valid_time(mixed $raw, bool $allowEmpty=true): ?string {
 }
 const ISSUE_KINDS=['Belag','Beschilderung','Hindernis','Sicherheit','Verschmutzung','Bewuchs','Sonstiges'];
 const ISSUE_STATES=['offen','gemeldet','bearbeitung','erledigt'];
-/** Prüft eine Mangelzeile. $previous: gespeicherte Fassung (Fotos, Erledigt-Zeit bleiben erhalten). */
-function clean_issue(mixed $issue, array $tourIds, ?array $previous=null): array {
+/** Prüft eine Mangelzeile aus der App. */
+function clean_issue(mixed $issue, array $tourIds): array {
     if (!is_array($issue)) fail('Ungültige Mangelzeile.');
     $issueId=(string)($issue['id']??'');
     if (!preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangel-ID.');
@@ -325,28 +341,29 @@ function clean_issue(mixed $issue, array $tourIds, ?array $previous=null): array
     $kind=(string)($issue['kind']??'');
     $status=(string)($issue['status']??'offen');
     if (!in_array($kind,ISSUE_KINDS,true) || !in_array($status,ISSUE_STATES,true)) fail('Ungültige Mangelart oder Bearbeitungsstatus.');
-    $wasDone=($previous['status']??'offen')==='erledigt';
-    return [
-        'id'=>$issueId,'tourId'=>$tour,'kind'=>$kind,
-        'time'=>valid_time($issue['time']??null),
-        'place'=>norm((string)($issue['place']??''),180),
-        'description'=>norm((string)($issue['description']??''),3000),
-        'status'=>$status,'coords'=>valid_coords($issue['coords']??null),
-        'photos'=>$previous['photos']??[],
-        'createdAt'=>$previous['createdAt']??gmdate('c'),
-        'completedAt'=>$status==='erledigt'?($wasDone?($previous['completedAt']??gmdate('c')):gmdate('c')):null
-    ];
+    return ['id'=>$issueId,'tourId'=>$tour,'kind'=>$kind,'time'=>valid_time($issue['time']??null),
+        'place'=>norm((string)($issue['place']??''),180),'description'=>norm((string)($issue['description']??''),3000),
+        'status'=>$status,'coords'=>valid_coords($issue['coords']??null)];
+}
+/**
+ * Mangel anlegen oder ändern (innerhalb einer Transaktion, Fahrt gesperrt).
+ * Erfassungszeit bleibt; „erledigt seit“ wird beim Wechsel auf erledigt gesetzt und bleibt danach stehen.
+ */
+function issue_upsert(string $entryId, array $c, int $position): void {
+    $prev=db_row('SELECT entry_id, status, completed_at FROM radpate_issues WHERE id=?',[$c['id']]);
+    if ($prev && $prev['entry_id']!==$entryId) fail('Mangel gehört zu einer anderen Kontrollfahrt.',409);
+    $done=$c['status']==='erledigt';
+    $completed=$done ? (($prev && $prev['status']==='erledigt' && $prev['completed_at']) ? $prev['completed_at'] : db_now()) : null;
+    $vals=[$c['tourId'],$position,$c['kind'],$c['time'],$c['place'],$c['description'],$c['status'],$c['coords']['lat']??null,$c['coords']['lon']??null,$completed];
+    if ($prev) dbq('UPDATE radpate_issues SET route_id=?, position=?, kind=?, issue_time=?, place=?, description=?, status=?, lat=?, lon=?, completed_at=? WHERE id=?',[...$vals,$c['id']]);
+    else dbq('INSERT INTO radpate_issues (route_id, position, kind, issue_time, place, description, status, lat, lon, completed_at, id, entry_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$vals,$c['id'],$entryId,db_now()]);
+}
+function issue_one(string $issueId): array {
+    $r=db_row('SELECT * FROM radpate_issues WHERE id=?',[$issueId]) ?? fail('Mangel nicht gefunden.',404);
+    return issue_out($r,array_map('photo_out',db_all('SELECT * FROM radpate_photos WHERE issue_id=? ORDER BY position, created_at',[$issueId])));
 }
 function entry_status(array $issues): string { return count($issues)>0?'mangel':'gut'; }
-function find_entry_index(array $entries, string $id): int {
-    foreach ($entries as $i=>$e) if (($e['id']??'')===$id) return $i;
-    fail('Kontrollfahrt nicht gefunden.',404);
-}
-function photo_list(array $entry): array {
-    $all=$entry['photos']??[];
-    foreach (($entry['issues']??[]) as $issue) foreach (($issue['photos']??[]) as $p) $all[]=$p;
-    return $all;
-}
+
 if ($action==='entry' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['id']??'');
@@ -364,43 +381,33 @@ if ($action==='entry' && $method==='POST') {
     }
     $startTime=valid_time($in['startTime']??null);
     $endTime=valid_time($in['endTime']??null);
-    $data=['tourIds'=>$tourIds,'tourId'=>$tourIds[0],'date'=>$date,
-      'startTime'=>$startTime,'endTime'=>$endTime,
-      'status'=>entry_status($issues),
-      'notes'=>norm((string)($in['notes']??''),5000), 'coords'=>valid_coords($in['coords']??null),
-      'issues'=>$issues];
-    $saved=update_json('entries',function (&$entries) use ($id,$data){
-        $now=gmdate('c');
-        foreach ($entries as &$entry) if ($id!=='' && ($entry['id']??'')===$id) {
-            $previous=[];
-            foreach (($entry['issues']??[]) as $old) $previous[$old['id']]=$old;
-            // Alte Daten beim ersten Bearbeiten bewahren: legacy-Fotos bleiben als allgemeine Fotos erhalten.
-            foreach ($data['issues'] as $i=>$_) {
-                $key=$data['issues'][$i]['id'];
-                $data['issues'][$i]['photos']=$previous[$key]['photos']??[];
-                $data['issues'][$i]['createdAt']=$previous[$key]['createdAt']??$data['issues'][$i]['createdAt'];
-                $wasDone=($previous[$key]['status']??'offen')==='erledigt';
-                $nowDone=$data['issues'][$i]['status']==='erledigt';
-                $data['issues'][$i]['completedAt']=$nowDone?($wasDone?($previous[$key]['completedAt']??gmdate('c')):gmdate('c')):null;
-            }
-            $remaining=[];
-            foreach ($data['issues'] as $i) $remaining[$i['id']]=true;
-            $discarded=[];
-            foreach (($entry['issues']??[]) as $old) if (!isset($remaining[$old['id']])) foreach (($old['photos']??[]) as $photo) $discarded[]=$photo;
-            if ($data['endTime']!==null) $data['running']=false;
-            $entry=array_merge($entry,$data,['updatedAt'=>$now]);
-            return ['entry'=>$entry,'discarded'=>$discarded];
+    $notes=norm((string)($in['notes']??''),5000);
+    $coords=valid_coords($in['coords']??null);
+    [$entryId,$discarded]=db_tx(function () use ($id,$tourIds,$date,$startTime,$endTime,$notes,$coords,$issues) {
+        $now=db_now();
+        if ($id!=='') {
+            entry_lock($id);
+            dbq('UPDATE radpate_entries SET trip_date=?, start_time=?, end_time=?, notes=?, lat=?, lon=?, updated_at=?, running=IF(? IS NULL, running, 0) WHERE id=?',
+                [$date,$startTime,$endTime,$notes,$coords['lat']??null,$coords['lon']??null,$now,$endTime,$id]);
+            $entryId=$id;
+        } else {
+            $entryId=bin2hex(random_bytes(12));
+            dbq('INSERT INTO radpate_entries (id, trip_date, start_time, end_time, running, notes, lat, lon, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,?)',
+                [$entryId,$date,$startTime,$endTime,$notes,$coords['lat']??null,$coords['lon']??null,$now,$now]);
         }
-        if ($id!=='') fail('Eintrag nicht gefunden.',404);
-        $entry=array_merge(['id'=>bin2hex(random_bytes(12)),'createdAt'=>$now,'photos'=>[]],$data,['updatedAt'=>$now]);
-        $entries[]=$entry;
-        return ['entry'=>$entry,'discarded'=>[]];
+        entry_set_tours($entryId,$tourIds);
+        foreach ($issues as $pos=>$c) issue_upsert($entryId,$c,$pos);
+        // Mängel, die in der Liste fehlen, samt Fotos entfernen.
+        $keep=array_column($issues,'id');
+        $ph=$keep?implode(',',array_fill(0,count($keep),'?')):"''";
+        $discarded=db_all("SELECT p.id, p.file FROM radpate_photos p JOIN radpate_issues i ON i.id=p.issue_id WHERE i.entry_id=? AND i.id NOT IN ($ph)",[$entryId,...$keep]);
+        dbq("DELETE FROM radpate_issues WHERE entry_id=? AND id NOT IN ($ph)",[$entryId,...$keep]);
+        return [$entryId,$discarded];
     });
-    foreach ($saved['discarded'] as $photo) if (!empty($photo['file'])) delete_photo_files($photo['file'],(string)($photo['id']??''));
-    result(['ok'=>true,'entry'=>$saved['entry']]);
+    delete_photo_rows_files($discarded);
+    result(['ok'=>true,'entry'=>entry_one($entryId)]);
 }
-// Eigenstaendige Mangel-Aktualisierung: erledigt/offen ohne die alte Kontrollfahrt zu veraendern.
-// JSON-Aktualisierung ist gesperrt/atomar, daher gehen parallel erfasste Mängel nicht verloren.
+// Mangel erledigt/offen setzen, ohne die übrige Kontrollfahrt anzufassen.
 if ($action==='issueStatus' && $method==='POST') {
     $in=post_json();
     $entryId=(string)($in['entryId']??'');
@@ -408,37 +415,14 @@ if ($action==='issueStatus' && $method==='POST') {
     $next=(string)($in['status']??'');
     if (!preg_match('/^[a-f0-9]{24}$/',$entryId) || !preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangelkennung.');
     if (!in_array($next,['erledigt','offen'],true)) fail('Ungültiger Mangelstatus.');
-    $out=update_json('entries',function (&$entries) use ($entryId,$issueId,$next) {
-        foreach ($entries as &$entry) if (($entry['id']??'')===$entryId) {
-            // Kompatibilitaet mit Tagebuechern vor v3: den alten Mangel bei Bedarf uebernehmen.
-            if (!isset($entry['issues']) || !is_array($entry['issues'])) {
-                $entry['issues']=[];
-                if (($entry['status']??'')==='mangel' || ($entry['status']??'')==='hinweis' || !empty($entry['issueKind']) || !empty($entry['place'])) {
-                    $kinds=['Belag','Beschilderung','Hindernis','Sicherheit','Verschmutzung','Bewuchs','Sonstiges'];
-                    $entry['issues'][]=[
-                        'id'=>'i_'.$entryId,'tourId'=>$entry['tourId']??'01',
-                        'kind'=>in_array($entry['issueKind']??'', $kinds,true)?$entry['issueKind']:'Sonstiges',
-                        'place'=>$entry['place']??'','description'=>'', 'status'=>'offen',
-                        'coords'=>$entry['coords']??null,'photos'=>[]
-                    ];
-                }
-            }
-            foreach ($entry['issues'] as &$issue) if (($issue['id']??'')===$issueId) {
-                $old=(string)($issue['status']??'offen');
-                $issue['status']=$next;
-                if ($next==='erledigt') {
-                    if ($old!=='erledigt' || empty($issue['completedAt'])) $issue['completedAt']=gmdate('c');
-                } else {
-                    $issue['completedAt']=null;
-                }
-                $entry['updatedAt']=gmdate('c');
-                return ['issue'=>$issue,'entryId'=>$entryId];
-            }
-            fail('Mangel nicht gefunden.',404);
-        }
-        fail('Streckenpruefung nicht gefunden.',404);
+    db_tx(function () use ($entryId,$issueId,$next) {
+        entry_lock($entryId);
+        $old=db_row('SELECT status, completed_at FROM radpate_issues WHERE id=? AND entry_id=?',[$issueId,$entryId]) ?? fail('Mangel nicht gefunden.',404);
+        $completed=$next==='erledigt' ? (($old['status']==='erledigt' && $old['completed_at']) ? $old['completed_at'] : db_now()) : null;
+        dbq('UPDATE radpate_issues SET status=?, completed_at=? WHERE id=?',[$next,$completed,$issueId]);
+        entry_touch($entryId);
     });
-    result(['ok'=>true]+$out);
+    result(['ok'=>true,'issue'=>issue_one($issueId),'entryId'=>$entryId]);
 }
 // ── Laufende Kontrollfahrt: anlegen, Metadaten ändern/beenden, Mängel einzeln speichern ──
 if ($action==='tripStart' && $method==='POST') {
@@ -447,81 +431,86 @@ if ($action==='tripStart' && $method==='POST') {
     $date=(string)($in['date']??'');
     if (!valid_date($date)) fail('Datum ist ungültig.');
     $startTime=valid_time($in['startTime']??null,false);
-    $now=gmdate('c');
-    $entry=['id'=>bin2hex(random_bytes(12)),'createdAt'=>$now,'updatedAt'=>$now,
-        'tourIds'=>$tourIds,'tourId'=>$tourIds[0],'date'=>$date,'startTime'=>$startTime,'endTime'=>null,
-        'running'=>true,'status'=>'gut','notes'=>'','coords'=>null,'issues'=>[],'photos'=>[]];
-    update_json('entries',function (&$entries) use ($entry) { $entries[]=$entry; return true; });
-    result(['ok'=>true,'entry'=>$entry]);
+    $id=bin2hex(random_bytes(12));
+    db_tx(function () use ($id,$tourIds,$date,$startTime) {
+        $now=db_now();
+        dbq("INSERT INTO radpate_entries (id, trip_date, start_time, end_time, running, notes, created_at, updated_at) VALUES (?,?,?,NULL,1,'',?,?)",[$id,$date,$startTime,$now,$now]);
+        entry_set_tours($id,$tourIds);
+    });
+    result(['ok'=>true,'entry'=>entry_one($id)]);
 }
 if ($action==='tripUpdate' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['entryId']??'');
     if (!preg_match('/^[a-f0-9]{24}$/',$id)) fail('Ungültige Eintrags-ID.');
-    $entry=update_json('entries',function (&$entries) use ($id,$in) {
-        $i=find_entry_index($entries,$id); $e=&$entries[$i];
-        if (array_key_exists('date',$in)) { if (!valid_date((string)$in['date'])) fail('Datum ist ungültig.'); $e['date']=(string)$in['date']; }
-        if (array_key_exists('startTime',$in)) $e['startTime']=valid_time($in['startTime'],false);
-        if (array_key_exists('endTime',$in)) $e['endTime']=valid_time($in['endTime']);
-        if (array_key_exists('notes',$in)) $e['notes']=norm((string)$in['notes'],5000);
-        if (array_key_exists('running',$in)) $e['running']=(bool)$in['running'];
-        if (($e['running']??false) && !empty($e['endTime']) && !($in['running']??false)) $e['running']=false;
+    db_tx(function () use ($id,$in) {
+        $e=entry_lock($id);
+        $date=$e['trip_date']; $start=db_hm($e['start_time']); $end=db_hm($e['end_time']); $notes=$e['notes']; $running=(bool)$e['running'];
+        if (array_key_exists('date',$in)) { if (!valid_date((string)$in['date'])) fail('Datum ist ungültig.'); $date=(string)$in['date']; }
+        if (array_key_exists('startTime',$in)) $start=valid_time($in['startTime'],false);
+        if (array_key_exists('endTime',$in)) $end=valid_time($in['endTime']);
+        if (array_key_exists('notes',$in)) $notes=norm((string)$in['notes'],5000);
+        if (array_key_exists('running',$in)) $running=(bool)$in['running'];
+        if ($running && $end!==null && !($in['running']??false)) $running=false;
         if (array_key_exists('tourIds',$in)) {
             $ids=valid_tour_ids($in['tourIds']);
-            foreach (($e['issues']??[]) as $iss) if (!in_array($iss['tourId']??'',$ids,true)) fail('Eine Tour mit erfassten Mängeln kann nicht entfernt werden.');
-            $e['tourIds']=$ids; $e['tourId']=$ids[0];
+            foreach (db_all('SELECT DISTINCT route_id FROM radpate_issues WHERE entry_id=?',[$id]) as $r)
+                if (!in_array($r['route_id'],$ids,true)) fail('Eine Tour mit erfassten Mängeln kann nicht entfernt werden.');
+            entry_set_tours($id,$ids);
         }
-        $e['updatedAt']=gmdate('c');
-        return $e;
+        dbq('UPDATE radpate_entries SET trip_date=?, start_time=?, end_time=?, notes=?, running=?, updated_at=? WHERE id=?',[$date,$start,$end,$notes,$running?1:0,db_now(),$id]);
     });
-    result(['ok'=>true,'entry'=>$entry]);
+    result(['ok'=>true,'entry'=>entry_one($id)]);
 }
 if ($action==='issueSave' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['entryId']??'');
     if (!preg_match('/^[a-f0-9]{24}$/',$id)) fail('Ungültige Eintrags-ID.');
-    $issue=update_json('entries',function (&$entries) use ($id,$in) {
-        $i=find_entry_index($entries,$id); $e=&$entries[$i];
-        $issues=is_array($e['issues']??null)?$e['issues']:[];
-        $issueId=(string)($in['issue']['id']??'');
-        $pos=null; foreach ($issues as $k=>$old) if (($old['id']??'')===$issueId) { $pos=$k; break; }
-        if ($pos===null && count($issues)>=25) fail('Maximal 25 Mängel pro Kontrollfahrt.');
-        $clean=clean_issue($in['issue']??null,$e['tourIds']??[$e['tourId']??'01'],$pos===null?null:$issues[$pos]);
-        if ($pos===null) $issues[]=$clean; else $issues[$pos]=$clean;
-        $e['issues']=array_values($issues); $e['status']=entry_status($e['issues']); $e['updatedAt']=gmdate('c');
-        return $clean;
+    $issueId=db_tx(function () use ($id,$in) {
+        entry_lock($id);
+        $clean=clean_issue($in['issue']??null,entry_tour_ids($id));
+        $pos=db_val('SELECT position FROM radpate_issues WHERE id=? AND entry_id=?',[$clean['id'],$id]);
+        if ($pos===null) {
+            $n=(int)db_val('SELECT COUNT(*) FROM radpate_issues WHERE entry_id=?',[$id]);
+            if ($n>=25) fail('Maximal 25 Mängel pro Kontrollfahrt.');
+            $pos=(int)db_val('SELECT COALESCE(MAX(position)+1,0) FROM radpate_issues WHERE entry_id=?',[$id]);
+        }
+        issue_upsert($id,$clean,(int)$pos);
+        entry_touch($id);
+        return $clean['id'];
     });
-    result(['ok'=>true,'issue'=>$issue]);
+    result(['ok'=>true,'issue'=>issue_one($issueId)]);
 }
 if ($action==='issueDelete' && $method==='POST') {
     $in=post_json();
     $id=(string)($in['entryId']??''); $issueId=(string)($in['issueId']??'');
     if (!preg_match('/^[a-f0-9]{24}$/',$id) || !preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültige Mangelkennung.');
-    $photos=update_json('entries',function (&$entries) use ($id,$issueId) {
-        $i=find_entry_index($entries,$id); $e=&$entries[$i];
-        foreach (($e['issues']??[]) as $k=>$iss) if (($iss['id']??'')===$issueId) {
-            array_splice($e['issues'],$k,1); $e['status']=entry_status($e['issues']); $e['updatedAt']=gmdate('c');
-            return $iss['photos']??[];
-        }
-        fail('Mangel nicht gefunden.',404);
+    $photos=db_tx(function () use ($id,$issueId) {
+        entry_lock($id);
+        if (db_val('SELECT 1 FROM radpate_issues WHERE id=? AND entry_id=?',[$issueId,$id])===null) fail('Mangel nicht gefunden.',404);
+        $photos=db_all('SELECT id, file FROM radpate_photos WHERE issue_id=?',[$issueId]);
+        dbq('DELETE FROM radpate_issues WHERE id=?',[$issueId]); // Fotozeilen per ON DELETE CASCADE
+        entry_touch($id);
+        return $photos;
     });
-    foreach ($photos as $p) if (!empty($p['file'])) delete_photo_files($p['file'],(string)($p['id']??''));
+    delete_photo_rows_files($photos);
     result(['ok'=>true]);
 }
 if ($action==='deleteEntry' && $method==='POST') {
     $id=(string)(post_json()['id']??'');
-    $photos=update_json('entries',function (&$entries) use ($id) {
-        foreach ($entries as $i=>$entry) if (($entry['id']??'')===$id) {
-            array_splice($entries,$i,1); return photo_list($entry);
-        }
-        fail('Eintrag nicht gefunden.',404);
+    $photos=db_tx(function () use ($id) {
+        entry_lock($id);
+        $photos=db_all('SELECT id, file FROM radpate_photos WHERE entry_id=?',[$id]);
+        dbq('DELETE FROM radpate_entries WHERE id=?',[$id]); // Touren, Mängel, Fotozeilen per CASCADE
+        return $photos;
     });
-    foreach ($photos as $p) if (!empty($p['file'])) delete_photo_files($p['file'],(string)($p['id']??''));
+    delete_photo_rows_files($photos);
     result(['ok'=>true]);
 }
 if ($action==='upload' && $method==='POST') {
     $entryId=(string)($_POST['entryId']??'');
     $issueId=(string)($_POST['issueId']??'');
+    if (!preg_match('/^[a-f0-9]{24}$/',$entryId)) fail('Eintrag nicht gefunden.',404);
     if ($issueId!=='' && !preg_match('/^i_[a-f0-9]{24}$/',$issueId)) fail('Ungültiger Mangel.');
     if (!isset($_FILES['file']) || $_FILES['file']['error']!==UPLOAD_ERR_OK) fail('Foto konnte nicht hochgeladen werden (ggf. PHP-Uploadlimit prüfen).');
     $f=$_FILES['file'];
@@ -532,32 +521,24 @@ if ($action==='upload' && $method==='POST') {
     $path=storage().'/photos';
     if (!is_dir($path) && !mkdir($path,0700,true)) fail('Foto-Ordner nicht beschreibbar.',500);
     $photoId=bin2hex(random_bytes(12));$filename=$photoId.'.'.$types[$mime];
-    // Reservierung zuerst in gesperrter JSON-Liste. Foto-Upload ist pro Einzelmangel begrenzt.
     if ($mime==='image/jpeg') { strip_jpeg_metadata($f['tmp_name']); clearstatcache(true,$f['tmp_name']); }
     $photo=['id'=>$photoId,'name'=>norm((string)$f['name'],120),'file'=>$filename,'mime'=>$mime,'size'=>(int)filesize($f['tmp_name'])];
-    update_json('entries',function (&$entries) use ($entryId,$issueId,$photo) {
-        foreach ($entries as &$entry) if (($entry['id']??'')===$entryId) {
-            if (count(photo_list($entry))>=40) fail('Maximal 40 Fotos je Kontrollfahrt.');
-            if ($issueId==='') {
-                if (count($entry['photos']??[])>=8) fail('Maximal 8 allgemeine Fotos.');
-                $entry['photos'][]=$photo; return true;
-            }
-            foreach ($entry['issues'] as &$issue) if ($issue['id']===$issueId) {
-                if (count($issue['photos']??[])>=5) fail('Maximal 5 Fotos je Mangel.');
-                $issue['photos'][]=$photo;return true;
-            }
-            fail('Mangel nicht gefunden.',404);
+    // Zeile zuerst (Grenzen geprüft unter Sperre), dann die Datei; scheitert die Datei, Zeile wieder weg.
+    db_tx(function () use ($entryId,$issueId,$photo) {
+        if (!db_row('SELECT id FROM radpate_entries WHERE id=? FOR UPDATE',[$entryId])) fail('Eintrag nicht gefunden.',404);
+        if ((int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE entry_id=?',[$entryId])>=40) fail('Maximal 40 Fotos je Kontrollfahrt.');
+        if ($issueId==='') {
+            if ((int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE entry_id=? AND issue_id IS NULL',[$entryId])>=8) fail('Maximal 8 allgemeine Fotos.');
+        } else {
+            if (db_val('SELECT 1 FROM radpate_issues WHERE id=? AND entry_id=?',[$issueId,$entryId])===null) fail('Mangel nicht gefunden.',404);
+            if ((int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE issue_id=?',[$issueId])>=5) fail('Maximal 5 Fotos je Mangel.');
         }
-        fail('Eintrag nicht gefunden.',404);
+        $pos=(int)db_val('SELECT COUNT(*) FROM radpate_photos WHERE entry_id=? AND issue_id <=> ?',[$entryId,$issueId===''?null:$issueId]);
+        dbq('INSERT INTO radpate_photos (id, entry_id, issue_id, position, file, name, mime, size, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+            [$photo['id'],$entryId,$issueId===''?null:$issueId,$pos,$photo['file'],$photo['name'],$photo['mime'],$photo['size'],db_now()]);
     });
     if (!move_uploaded_file($f['tmp_name'],$path.'/'.$filename)) {
-        // bei einem I/O-Fehler die reservierte Metadatenzeile wieder entfernen
-        update_json('entries',function (&$entries) use ($photoId) {
-            foreach ($entries as &$entry) {
-                $entry['photos']=array_values(array_filter($entry['photos']??[],fn($p)=>($p['id']??'')!==$photoId));
-                foreach (($entry['issues']??[]) as &$issue) $issue['photos']=array_values(array_filter($issue['photos']??[],fn($p)=>($p['id']??'')!==$photoId));
-            }
-        });
+        dbq('DELETE FROM radpate_photos WHERE id=?',[$photoId]);
         fail('Speichern des Fotos fehlgeschlagen.',500);
     }
     @chmod($path.'/'.$filename,0600);
@@ -565,24 +546,15 @@ if ($action==='upload' && $method==='POST') {
 }
 if ($action==='deletePhoto' && $method==='POST') {
     $id=(string)(post_json()['id']??'');
-    $file=update_json('entries',function (&$entries) use ($id) {
-        foreach ($entries as &$entry) {
-            foreach (($entry['photos']??[]) as $idx=>$photo) if (($photo['id']??'')===$id) {
-                array_splice($entry['photos'],$idx,1); return $photo;
-            }
-            if (isset($entry['issues']) && is_array($entry['issues'])) foreach ($entry['issues'] as &$issue) foreach (($issue['photos']??[]) as $idx=>$photo) if (($photo['id']??'')===$id) {
-                array_splice($issue['photos'],$idx,1);return $photo;
-            }
-        }
-        fail('Foto nicht gefunden.',404);
-    });
-    delete_photo_files((string)($file['file']??''),(string)($file['id']??''));
+    $row=db_row('SELECT id, file FROM radpate_photos WHERE id=?',[$id]) ?? fail('Foto nicht gefunden.',404);
+    dbq('DELETE FROM radpate_photos WHERE id=?',[$id]);
+    delete_photo_rows_files([$row]);
     result(['ok'=>true]);
 }
 if ($action==='photo' && $method==='GET') {
     $pid=(string)($_GET['id']??'');
     if (!preg_match('/^[0-9a-f]{24}$/',$pid)) fail('Foto nicht gefunden.',404);
-    $metadata=photo_metadata($pid);
+    $metadata=db_row('SELECT file, mime FROM radpate_photos WHERE id=?',[$pid]);
     if (!$metadata) fail('Foto nicht gefunden.',404);
     $file=storage().'/photos/'.basename($metadata['file']);
     if (!is_file($file)) fail('Foto nicht gefunden.',404);
@@ -601,23 +573,25 @@ if ($action==='photo' && $method==='GET') {
 if ($action==='export' && $method==='GET') {
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="radwegpate-tagebuch-'.date('Y-m-d').'.json"');
-    echo json_encode(['exportedAt'=>gmdate('c'),'routes'=>read_json('routes',defaults()),'entries'=>read_json('entries'),'mapData'=>map_info()],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+    echo json_encode(['exportedAt'=>gmdate('c'),'routes'=>routes_all(),'entries'=>entries_load(),'mapData'=>map_info()],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 if ($action==='password' && $method==='POST') {
     $in=post_json();
     $old=(string)($in['old']??'');$new=(string)($in['new']??'');
-    if (!password_verify($old,(string)(read_json('install')['password_hash']??''))) fail('Das bisherige Passwort ist nicht korrekt.');
+    if (!password_verify($old,(string)setting('password_hash'))) fail('Das bisherige Passwort ist nicht korrekt.');
     if (strlen($new)<12 || strlen($new)>256) fail('Neues Passwort: 12 bis 256 Zeichen.');
-    update_json('install',function (&$install) use ($new) {
-        $install['password_hash']=password_hash($new,PASSWORD_DEFAULT);
-        $install['passwordChangedAt']=gmdate('c');
-        $install['pwv']=(int)($install['pwv']??0)+1; return true;
+    $pwv=db_tx(function () use ($new) {
+        $v=(int)db_val("SELECT `value` FROM radpate_settings WHERE `name`='password_version' FOR UPDATE")+1;
+        setting_set('password_hash',password_hash($new,PASSWORD_DEFAULT));
+        setting_set('password_changed_at',gmdate('c'));
+        setting_set('password_version',(string)$v);
+        return $v;
     });
-    start_session_for_user(); // diese Sitzung bleibt, alle anderen sind abgemeldet
+    start_session_for_user($pwv); // diese Sitzung bleibt, alle anderen sind abgemeldet
     result(['ok'=>true]);
 }
 
-// KML wird im Browser geparst. Linien, explizite Wendepunkte und Ebenenzuordnung werden als JSON gespeichert.
+// KML wird im Browser geparst. Linien, explizite Wendepunkte und Ebenenzuordnung werden gespeichert.
 // Keine KML/XML-Verarbeitung auf dem Server: keine PHP-DOM-Erweiterung erforderlich.
 if ($action==='mapData' && $method==='GET') {
     result(['ok'=>true,'map'=>map_info()]);
@@ -670,28 +644,35 @@ if ($action==='mapImport' && $method==='POST') {
         if ($lines) $clean[]=['id'=>$id,'name'=>$name?:'Unbenannte Ebene','lines'=>$lines,'turnpoints'=>$turnpoints];
     }
     if(!$clean) fail('Keine Linien importiert.');
-    $old=map_info();$assign=[];
-    foreach ($clean as $src){
-        $id=$src['id'];
-        $auto=(string)($in['assignments'][$id]??'');
-        $prior=(string)($old['assignments'][$id]??'');
-        $assign[$id]=in_array($auto,['01','02','03','04','05','06','07'],true)?$auto:(in_array($prior,['01','02','03','04','05','06','07'],true)?$prior:'');
-    }
-    $imported=['sources'=>$clean,'assignments'=>$assign,'importedAt'=>gmdate('c'),'fileName'=>norm((string)($in['fileName']??'KML-Import'),180)];
-    update_json('map_data',function (&$data) use ($imported) {$data=$imported;return true;},[]);
+    $fileName=norm((string)($in['fileName']??'KML-Import'),180);
+    // Ersetzt alle Ebenen. Zuordnung: aus dem Import, sonst die bisherige derselben Ebene.
+    db_tx(function () use ($clean,$in,$fileName) {
+        $prior=[];
+        foreach (db_all('SELECT id, route_id FROM radpate_map_sources FOR UPDATE') as $r) $prior[$r['id']]=$r['route_id']??'';
+        dbq('DELETE FROM radpate_map_sources');
+        foreach ($clean as $pos=>$src){
+            $auto=(string)($in['assignments'][$src['id']]??'');
+            $before=(string)($prior[$src['id']]??'');
+            $route=in_array($auto,ROUTE_IDS,true)?$auto:(in_array($before,ROUTE_IDS,true)?$before:null);
+            dbq('INSERT INTO radpate_map_sources (id, position, name, route_id, line_data, turnpoints) VALUES (?,?,?,?,?,?)',
+                [$src['id'],$pos,$src['name'],$route,json_encode($src['lines'],JSON_UNESCAPED_SLASHES),json_encode($src['turnpoints'],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)]);
+        }
+        setting_set('map_imported_at',gmdate('c'));
+        setting_set('map_file_name',$fileName);
+    });
     result(['ok'=>true,'sources'=>count($clean),'lines'=>$totalLines,'points'=>$totalPoints]);
 }
 if ($action==='mapAssign' && $method==='POST') {
-    $in=post_json();$map=update_json('map_data',function (&$data) use ($in) {
-        if(!is_array($data['sources']??null)) fail('Zuerst KML importieren.');
-        $available=array_column($data['sources'],'id');$next=[];
+    $in=post_json();
+    db_tx(function () use ($in) {
+        $available=array_column(db_all('SELECT id FROM radpate_map_sources ORDER BY position FOR UPDATE'),'id');
+        if(!$available) fail('Zuerst KML importieren.');
         foreach($available as $id){
             $value=(string)($in['assignments'][$id]??'');
-            if(!in_array($value,['','01','02','03','04','05','06','07'],true)) fail('Tourenzuordnung ungültig.');
-            $next[$id]=$value;
+            if(!in_array($value,['',...ROUTE_IDS],true)) fail('Tourenzuordnung ungültig.');
+            dbq('UPDATE radpate_map_sources SET route_id=? WHERE id=?',[$value===''?null:$value,$id]);
         }
-        $data['assignments']=$next;return true;
-    },[]);
+    });
     result(['ok'=>true]);
 }
 if ($action==='gpx' && $method==='GET') {
@@ -699,7 +680,7 @@ if ($action==='gpx' && $method==='GET') {
     $rawCombo=(string)($_GET['ids']??'');
     $combo=($rawCombo!=='');
     $ids=$combo?explode(',', $rawCombo):[(string)($_GET['id']??'')];
-    $valid=['01','02','03','04','05','06','07'];
+    $valid=ROUTE_IDS;
     if (($combo && (count($ids)<2 || count($ids)>7 || count($ids)!==count(array_unique($ids))))
         || (!$combo&&count($ids)!==1)) fail('Für eine Kombination bitte zwei bis sieben unterschiedliche Touren wählen.');
     foreach($ids as $id) if(!in_array($id,$valid,true)) fail('Unbekannte Tour.');
@@ -710,12 +691,8 @@ if ($action==='gpx' && $method==='GET') {
         if(array_key_exists($id,$byId))foreach(($src['lines']??[]) as $line)$byId[$id][]=$line;
     }
     foreach($ids as $id)if(!$byId[$id])fail('Für Tour '.$id.' ist keine KML-Linie vorhanden.',404);
-    $routes=read_json('routes',defaults());$names=[];
-    foreach($ids as $id){
-        $name='Tour '.$id;
-        foreach($routes as $route) if($route['id']===$id){$name=$route['name'];break;}
-        $names[]=$name;
-    }
+    $routeNames=array_column(db_all('SELECT id, name FROM radpate_routes'),'name','id');$names=[];
+    foreach($ids as $id) $names[]=$routeNames[$id]??('Tour '.$id);
     if($combo){
         $last=null;$joined=[];
         foreach($ids as $id){
@@ -739,8 +716,6 @@ if ($action==='gpx' && $method==='GET') {
         $filename='radwegpate-tour-'.$ids[0].'.gpx';
     }
     header('Content-Type: application/gpx+xml; charset=utf-8');
-    // Über den Schlüssel-Link (eigenes Fenster der iOS-Homescreen-App) "inline": Safari zeigt dort die
-    // Dateiseite mit "In … öffnen"; ein Download ("attachment") bliebe in diesem Fenster leer.
     // Schlüssel-Link: inline, außer die Download-Seite gpx.php fordert ausdrücklich eine Datei an (save=1).
     $inline = $gpxByToken && ($_GET['save']??'')!=='1';
     header('Content-Disposition: '.($inline ? 'inline' : 'attachment').'; filename="'.$filename.'"');

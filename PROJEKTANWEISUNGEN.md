@@ -32,8 +32,11 @@ public/                 genau das, was auf den Server geht (Webroot radweg-pate.
   api.php               JSON-API (?action=…), Login, Dateien, GPX
   version.php           EINZIGE Stelle der Versionsnummer
   sw.js                 Service Worker, CACHE_NAME = radwegpate-<Version>
-  .htaccess             Sperren (config, Datenordner) und Cache-Header
-  config.example.php    Vorlage; config.php liegt NUR auf dem Server bzw. lokal
+  .htaccess             Sperren (config, .env, Datenordner, db/) und Cache-Header
+  config.php            liest die .env (Umgebung → .env → Vorgabe); im Repo, ohne Geheimnisse
+  .env.example          Vorlage; die .env liegt NUR auf dem Server bzw. lokal
+  db/                   Datenbank (nur Kommandozeile, von außen gesperrt): db.php, migrations/,
+                        migrate.php, import-json.php, backup.php, check.php
   assets/
     app.js              gesamte Oberflächenlogik (Vanilla JS, keine Abhängigkeiten)
     style.css           Stilvorlage nach docs/DESIGN_SYSTEM.md
@@ -41,7 +44,8 @@ public/                 genau das, was auf den Server geht (Webroot radweg-pate.
     icons.svg           Tabler-Icon-Sprite (erzeugt, nicht von Hand bearbeiten)
     vendor/leaflet-1.9.4/
   radwegpate_private/   Datenordner (auf dem Server; nie im Repo, nie im Deploy)
-scripts/                check.mjs, contrast.mjs, smoke-test.mjs, build-icons.mjs
+scripts/                check.mjs, contrast.mjs, smoke-test.mjs, import-test.php, build-icons.mjs
+tests/fixtures/         synthetische Altdaten für den Übernahme-Test
 docs/                   DEPLOY.md, DESIGN_SYSTEM.md
 .github/workflows/      test.yml (jeder Push), deploy.yml (nur von Hand)
 ```
@@ -51,8 +55,16 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
 
 ## 3. Daten und Sicherheit
 
-- **Keine Datenbank** (noch): JSON-Dateien in `radwegpate_private/` mit Dateisperre und atomarem
-  Schreiben (`update_json()`). Jede Änderung über `update_json`, nie direkt `file_put_contents`.
+- **MariaDB 10.11** (all-inkl, lokal Docker). Die Datenbank teilen sich mehrere Projekte:
+  **jede Tabelle beginnt mit `radpate_`** (`check.mjs` prüft das). Zugangsdaten nur in der `.env`.
+- Zugriff nur über `public/db/db.php` (`dbq`, `db_row`, `db_tx` …), immer mit Platzhaltern.
+  Änderungen, die mehrere Zeilen betreffen oder Grenzen prüfen (25 Mängel, 5 Fotos …), in `db_tx`
+  mit `entry_lock()` (SELECT … FOR UPDATE). Zeiten in UTC (`db_now`, `db_iso`).
+- **Schema nur per Migration:** neue Datei `public/db/migrations/NNN_name.sql`, nur erweiternd,
+  idempotent, ohne DELIMITER. Nie eine eingespielte Datei ändern. Regeln: `public/db/README.md`.
+- Die App liefert der Oberfläche dieselbe JSON-Form wie früher (`entries_load()`): Änderungen an
+  der Form nur erweiternd.
+- Fotos bleiben Dateien in `radwegpate_private/photos/`; die DB kennt nur den Verweis.
 - **Der Datenordner liegt im Webroot** und ist dreifach gesperrt (`public/.htaccess`,
   eigene `.htaccess` im Ordner — legt der Deploy an —, Deploy-Prüfung von außen).
   Sein Name `radwegpate_private` steht an vier Stellen: `config.php`, `public/.htaccess`,
@@ -63,8 +75,9 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
   mit `esc()` maskiert. IDs per Regex prüfen.
 - POST braucht das CSRF-Token (`X-CSRF-Token`); neue Aktionen nach `require_login()` einordnen.
 - Fotos: EXIF wird entfernt (Browser kodiert neu, Server streift JPEG-Metadaten zusätzlich ab).
-- Geheimnisse (Einrichtungscode) nur in `config.php` auf dem Server — nie ins Repo, nie in
-  `projekt_dokumente/` oder Chats.
+- Geheimnisse (Einrichtungscode, DB-Passwort) nur in der `.env` auf dem Server bzw. lokal — nie ins
+  Repo, nie in `projekt_dokumente/` oder Chats. Neuer Wert → Schlüssel in `.env.example` (leer) und
+  `config.php` (`rp_env()`) ergänzen.
 
 ## 4. Oberfläche — die harten Regeln
 
@@ -97,8 +110,8 @@ Ausführlich und mit Begründung in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM
   **und** `CACHE_NAME` in `public/sw.js` erhöhen (gleiche Nummer). Sonst bleibt die alte App auf
   dem Handy hängen. `check.mjs` bricht bei Abweichung ab.
 - Neue Datei, die offline da sein muss → in `SHELL` von `sw.js` eintragen.
-- Alte Daten bleiben lesbar: Formatänderungen an `entries.json` & Co. nur erweiternd, mit
-  Rückfall für ältere Einträge (siehe `entryIssues()` / Legacy-Zweig in `issueStatus`).
+- Alte Daten: Die JSON-Dateien von vor 3.9.0 übernimmt `db/import-json.php` einmalig (auch das
+  Format vor v3). Danach gilt nur noch die Datenbank.
 
 ## 6. Prüfen vor dem Push
 
@@ -116,4 +129,4 @@ und mit **Schriftgröße „Sehr groß“** ansehen.
 ## 7. Ausliefern
 
 Nur über GitHub Actions → **Deploy (radweg-pate.de)**, siehe [`docs/DEPLOY.md`](docs/DEPLOY.md).
-Kein FTP-Upload von Programmdateien. Von Hand per FTP nur `config.php` (einmalig).
+Kein FTP-Upload von Programmdateien. Von Hand per FTP/SSH nur die `.env` (einmalig).

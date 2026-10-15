@@ -1,5 +1,7 @@
-# Server-Konfiguration mit Einrichtungscode – nur auf dem Server bzw. lokal
-public/config.php
+# Zugangsdaten (Einrichtungscode, Datenbank) – nur auf dem Server bzw. lokal
+.env
+public/.env
+# bis 3.8: Konfiguration mit Zugangsdaten; seit 3.9 steht config.php im Repo (ohne Geheimnisse)
 
 # Private Daten (Tagebuch, Fotos, Passwort-Hash) – nie ins Repository
 radwegpate_private/

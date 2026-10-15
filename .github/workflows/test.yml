@@ -24,6 +24,17 @@ jobs:
       matrix:
         # 8.1 = Mindestversion laut Code (never, readonly-freie Syntax), 8.3 = Ziel auf all-inkl.
         php: ['8.1', '8.3']
+    # MariaDB 10.11 wie bei all-inkl (dort 10.11.14).
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+          MARIADB_DATABASE: radwegpate_ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=3s --health-timeout=5s --health-retries=40
     steps:
       - uses: actions/checkout@v5
 
@@ -31,7 +42,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, fileinfo, gd
+          extensions: mbstring, fileinfo, gd, pdo_mysql
           coverage: none
 
       - uses: actions/setup-node@v5
@@ -41,7 +52,7 @@ jobs:
       - name: PHP-Syntax
         run: |
           set -e
-          for f in public/*.php; do php -l "$f"; done
+          for f in public/*.php public/db/*.php scripts/*.php; do php -l "$f"; done
 
       - name: Statische Prüfungen (Version, CSP, Service Worker, JS-Syntax)
         run: node scripts/check.mjs
@@ -49,17 +60,22 @@ jobs:
       - name: Testserver starten
         run: |
           set -e
-          DATA="$RUNNER_TEMP/radweg-data"
+          DATA="$GITHUB_WORKSPACE/public/radwegpate_private"   # fest in config.php
           TOKEN="$(php -r 'echo bin2hex(random_bytes(16));')"
           echo "DATA_DIR=$DATA" >> "$GITHUB_ENV"
           echo "INSTALL_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-          cat > public/config.php <<EOF
-          <?php
-          declare(strict_types=1);
-          define('APP_INSTALL_TOKEN', '$TOKEN');
-          define('APP_DATA_DIR', '$DATA');
-          define('APP_MAX_UPLOAD_MB', 8);
+          # Zugangsdaten wie auf dem Server über public/.env (config.php steht im Repo).
+          cat > public/.env <<EOF
+          INSTALL_TOKEN=$TOKEN
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_NAME=radwegpate_ci
+          DB_USER=root
+          DB_PASSWORD=ci-root
           EOF
+          php public/db/check.php
+          php public/db/migrate.php
+          php public/db/migrate.php --status | grep -q 'Nichts offen'
           (cd public && php -S 127.0.0.1:8080 > "$RUNNER_TEMP/php-server.log" 2>&1 &)
           for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api.php?action=status >/dev/null && break; sleep 0.5; done
 
@@ -67,6 +83,16 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:8080
         run: node scripts/smoke-test.mjs
+
+      - name: Übernahme der JSON-Altdaten in eine leere Datenbank
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: root
+          DB_PASS: ci-root
+          DB_NAME: radwegpate_import
+        run: |
+          php -r '$p=new PDO("mysql:host=127.0.0.1","root","ci-root"); $p->exec("CREATE DATABASE radwegpate_import CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php scripts/import-test.php
 
       - name: PHP-Warnungen im Serverprotokoll?
         if: always()

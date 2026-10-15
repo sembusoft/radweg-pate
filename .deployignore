@@ -4,9 +4,9 @@
 # was lokal fehlt – diese Liste schützt davor.
 
 # ── Bleibt auf dem Server, niemals überschreiben oder löschen ──
-/config.php
+/.env
 /.user.ini
 /radwegpate_private/
 
 # ── Wird bewusst nicht ausgeliefert ──
-/config.example.php
+/.env.example

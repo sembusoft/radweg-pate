@@ -1,7 +1,7 @@
 // Statische Prüfungen ohne Server (lokal und in der CI): node scripts/check.mjs
 // Bricht ab, wenn Versionsnummern auseinanderlaufen, die Service-Worker-Shell auf
 // fehlende Dateien zeigt oder Code gegen die Content-Security-Policy verstößt.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const root = new URL('../public/', import.meta.url).pathname;
@@ -36,8 +36,9 @@ for (const f of ['index.php', 'gpx.php', 'assets/app.js']) {
 // 3b. Datenordner im Webroot muss gesperrt sein
 /RedirectMatch 404 "[^"]*radwegpate_private/.test(read('.htaccess'))
   ? ok('.htaccess sperrt radwegpate_private') : fail('public/.htaccess sperrt den Datenordner radwegpate_private nicht');
-(read('config.example.php').match(/APP_DATA_DIR',\s*__DIR__ \. '\/([^']+)'/) || [])[1] === 'radwegpate_private'
-  ? ok('config.example.php: Datenordner radwegpate_private') : fail('config.example.php: APP_DATA_DIR passt nicht zur Sperre in .htaccess');
+(read('config.php').match(/APP_DATA_DIR',\s*__DIR__ \. '\/([^']+)'/) || [])[1] === 'radwegpate_private'
+  ? ok('config.php: Datenordner radwegpate_private (fest)') : fail('config.php: APP_DATA_DIR passt nicht zur Sperre in .htaccess');
+/FilesMatch "[^"]*\\\.\.\*/.test(read('.htaccess')) ? ok('.htaccess sperrt Punktdateien (.env)') : fail('.htaccess sperrt Punktdateien (.env) nicht');
 
 // 4. Asset-Verweise in index.php existieren
 for (const m of index.matchAll(/(?:src|href)="(assets\/[^"?#]+)/g)) {
@@ -65,11 +66,31 @@ missingIcons.length ? fail('Icons fehlen im Sprite (scripts/build-icons.mjs erg�
 try { console.log(execFileSync(process.execPath, [new URL('./contrast.mjs', import.meta.url).pathname], { encoding: 'utf8' }).trim()); }
 catch (e) { fail('Kontrast:\n' + e.stdout); }
 
+// 5d. Datenbank: Migrationen nummeriert, nur radpate_-Tabellen, db/ von außen gesperrt
+const migs = readdirSync(root + 'db/migrations').filter(f => f.endsWith('.sql')).sort();
+const badName = migs.filter(f => !/^\d{3}_[a-z0-9_]+\.sql$/.test(f));
+badName.length ? fail('Migrationsnamen: NNN_name.sql erwartet: ' + badName.join(', ')) : ok(`Migrationen: ${migs.length} Dateien`);
+const nums = migs.map(f => f.slice(0, 3)); new Set(nums).size !== nums.length && fail('Migrationsnummer doppelt vergeben');
+for (const f of migs) {
+  const sql = read('db/migrations/' + f).replace(/^\s*--.*$/gm, '');
+  const tables = [...sql.matchAll(/(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|INSERT(?: IGNORE)? INTO|REFERENCES|DROP TABLE(?: IF EXISTS)?)\s+`?([\w]+)`?/gi)].map(m => m[1]);
+  const foreign = tables.filter(t => !t.startsWith('radpate_'));
+  foreign.length ? fail(`${f}: Tabellen ohne Präfix radpate_: ${[...new Set(foreign)].join(', ')}`) : ok(`${f}: nur radpate_-Tabellen`);
+  /^\s*DELIMITER/mi.test(sql) && fail(`${f}: DELIMITER ist nicht erlaubt`);
+}
+/RedirectMatch 404 "\(\?i\)\^\/\(\.\*\/\)\?db\(\/\|\$\)"/.test(read('.htaccess')) ? ok('.htaccess sperrt db/') : fail('.htaccess sperrt db/ nicht');
+/read_json|update_json|write_json/.test(read('api.php')) ? fail('api.php nutzt noch JSON-Dateien statt der Datenbank') : ok('api.php: Daten nur über die Datenbank');
+
 // 6. Keine Secrets im Repository-Stand
-if (existsSync(root + 'config.php')) console.log('hinweis config.php liegt lokal vor (gitignored, wird nicht deployt)');
-const example = read('config.example.php');
-/APP_INSTALL_TOKEN', '[A-Za-z0-9_-]{20,}'/.test(example) && !example.includes('HIER-')
-  ? fail('config.example.php enthält offenbar einen echten Einrichtungscode') : ok('config.example.php ohne echten Code');
+if (existsSync(root + '.env')) console.log('hinweis public/.env liegt lokal vor (gitignored, wird nicht deployt)');
+// config.php steht im Repo: Werte nur über rp_env(), keine Literale für Zugangsdaten.
+const cfg = read('config.php');
+/define\('APP_(INSTALL_TOKEN|DB_NAME|DB_USER|DB_PASS)',\s*'/.test(cfg) ? fail('config.php enthält Zugangsdaten als Text – gehören in die .env') : ok('config.php ohne Zugangsdaten (liest .env)');
+const example = read('.env.example');
+const filled = [...example.matchAll(/^(INSTALL_TOKEN|DB_NAME|DB_USER|DB_PASSWORD)=(.+)$/gm)].map(m => m[1]);
+filled.length ? fail('.env.example enthält Werte für ' + filled.join(', ') + ' – Vorlage muss leer bleiben') : ok('.env.example ohne Zugangsdaten');
+const deployIgnore = readFileSync(new URL('../.deployignore', import.meta.url), 'utf8');
+/^\/\.env$/m.test(deployIgnore) ? ok('.deployignore schützt /.env') : fail('.deployignore: /.env fehlt (Deploy könnte die .env löschen)');
 
 console.log(errors ? `\n${errors} Fehler` : '\nAlles in Ordnung.');
 process.exit(errors ? 1 : 0);

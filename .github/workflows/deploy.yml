@@ -16,6 +16,13 @@ name: Deploy (radweg-pate.de)
 #              .deployignore vor Übertragen und Löschen geschützt.
 #              APP_URL     (https://radweg-pate.de)
 #              SSH_PORT    (optional, Vorgabe 22)
+#              PHP_BIN     (optional, Vorgabe php – PHP auf der SSH-Kommandozeile, z. B. php83)
+#
+# Zugangsdaten (ab 3.9.0): nur in der .env auf dem Server (Vorlage public/.env.example).
+# config.php steht im Repository, liest die .env und wird mit ausgeliefert.
+# Vor dem Dateiabgleich: db/ übertragen → Sicherung (db/backup.php) → Migrationen (db/migrate.php)
+# → einmalige Übernahme der alten JSON-Dateien (db/import-json.php, macht danach nichts mehr).
+# Scheitert einer dieser Schritte, bricht der Lauf VOR dem Code-Abgleich ab.
 on:
   workflow_dispatch:
     inputs:
@@ -132,8 +139,8 @@ jobs:
           REMOTE="${{ vars.REMOTE_PATH }}"
           echo "Zielverzeichnis: $REMOTE"
           ssh deploy "test -d '$REMOTE'" || { echo "::error::Zielverzeichnis $REMOTE existiert nicht."; exit 1; }
-          if ! ssh deploy "test -f '$REMOTE/config.php'"; then
-            MSG="config.php fehlt auf dem Server. Vor dem ersten Deploy einmalig anlegen (Vorlage public/config.example.php, siehe docs/DEPLOY.md)."
+          if ! ssh deploy "test -f '$REMOTE/.env'"; then
+            MSG=".env fehlt auf dem Server ($REMOTE/.env). Vor dem Deploy einmalig anlegen (Vorlage public/.env.example, siehe docs/DEPLOY.md)."
             if [ "${{ inputs.dry_run }}" = "true" ]; then echo "::warning::$MSG"; else echo "::error::$MSG"; exit 1; fi
           fi
           echo -n 'PHP auf dem Server: '; ssh deploy "php -r 'echo PHP_VERSION;'" || true; echo
@@ -165,6 +172,59 @@ jobs:
             exit 1
           fi
           [ "$RECHT" = "schreibbar" ] || { echo "::error::Datenordner $DATA ist für PHP nicht schreibbar."; exit 1; }
+
+      # ── Datenbank ────────────────────────────────────────────────────
+      - name: Datenbank – Zugang prüfen
+        run: |
+          REMOTE="${{ vars.REMOTE_PATH }}"; PHPBIN="${{ vars.PHP_BIN || 'php' }}"
+          # db/ vorab übertragen (im Probelauf nicht): nur Kommandozeilen-Skripte, von außen gesperrt,
+          # der laufende Code nutzt sie nicht.
+          # config.php gleich mit: sie liest ab 3.9.0 die .env und liefert dieselben Konstanten wie bisher,
+          # der noch laufende alte Code kommt damit zurecht.
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            rsync -azc --chmod=D755,F644 public/db/ deploy:"$REMOTE/db/"
+            rsync -azc --chmod=F644 public/config.php deploy:"$REMOTE/config.php"
+          fi
+          if ! ssh deploy "test -f '$REMOTE/db/check.php'"; then
+            echo "db/ liegt noch nicht auf dem Server (Probelauf) – Prüfung beim ersten echten Lauf." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          ERG=$(ssh deploy "cd '$REMOTE' && $PHPBIN db/check.php" 2>&1) && RC=0 || RC=$?
+          echo "$ERG"
+          { echo "### Datenbank-Zugang"; echo '```'; echo "$ERG"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $RC -ne 0 ]; then
+            echo "::error::Datenbank nicht nutzbar – DB_* in der .env auf dem Server prüfen (docs/DEPLOY.md, Abschnitt Datenbank)."
+            [ "${{ inputs.dry_run }}" = "true" ] || exit 1
+          fi
+
+      - name: Datenbank – Sicherung, Migrationen, Übernahme der JSON-Daten
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          set -e
+          REMOTE="${{ vars.REMOTE_PATH }}"; PHPBIN="${{ vars.PHP_BIN || 'php' }}"
+          {
+            echo "### Datenbank"
+            echo '```'
+            ssh deploy "cd '$REMOTE' && $PHPBIN db/backup.php --keep=10" 2>&1
+            ssh deploy "cd '$REMOTE' && $PHPBIN db/migrate.php" 2>&1
+            ssh deploy "cd '$REMOTE' && $PHPBIN db/import-json.php --run" 2>&1
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # tee verschluckt Exit-Codes: Stand gegenprüfen.
+          ssh deploy "cd '$REMOTE' && $PHPBIN db/migrate.php --status" | grep -q 'Nichts offen' \
+            || { echo "::error::Migrationen nicht vollständig eingespielt – Code wird NICHT abgeglichen."; exit 1; }
+
+      - name: Datenbank – Vorschau (Probelauf)
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          REMOTE="${{ vars.REMOTE_PATH }}"; PHPBIN="${{ vars.PHP_BIN || 'php' }}"
+          if ssh deploy "test -f '$REMOTE/db/migrate.php'"; then
+            { echo "### Datenbank (Probelauf)"; echo '```'
+              ssh deploy "cd '$REMOTE' && $PHPBIN db/migrate.php --status" 2>&1 || true
+              ssh deploy "cd '$REMOTE' && $PHPBIN db/import-json.php" 2>&1 || true
+              echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "db/ liegt noch nicht auf dem Server – Migrationen und Übernahme laufen beim ersten echten Deploy." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
 
       # Immer zuerst zeigen, was passieren würde. --checksum vergleicht den Inhalt:
       # Git kennt keine Zeitstempel, ohne -c hielte rsync jede Datei für geändert.
@@ -216,7 +276,7 @@ jobs:
           STATUS=$(curl -sL --max-time 20 "$URL/api.php?action=status" || true)
           echo "**api.php?action=status:** \`$(echo "$STATUS" | head -c 200)\`" >> "$GITHUB_STEP_SUMMARY"
           echo "$STATUS" | grep -q "\"version\":\"${{ steps.stand.outputs.version }}\"" \
-            || { echo "::error::API antwortet nicht mit Version ${{ steps.stand.outputs.version }} (config.php, Datenordner oder PHP-Version prüfen)."; FEHLER=1; }
+            || { echo "::error::API antwortet nicht mit Version ${{ steps.stand.outputs.version }} (.env, Datenbank, Datenordner oder PHP-Version prüfen)."; FEHLER=1; }
 
           CFG=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/config.php" || echo 000)
           echo "**config.php von außen:** HTTP $CFG (erwartet 403)" >> "$GITHUB_STEP_SUMMARY"
@@ -226,12 +286,12 @@ jobs:
 
       # Läuft auch im Probelauf: ein GET ändert nichts, und ein offener Datenordner
       # ist der eine Befund, der nicht bis zum nächsten echten Lauf warten darf.
-      - name: Datenordner von außen gesperrt?
+      - name: Datenordner und db/ von außen gesperrt?
         run: |
           URL="${{ vars.APP_URL }}"; URL="${URL%/}"
           [ -z "$URL" ] && URL='https://radweg-pate.de'
           FEHLER=0
-          for P in radwegpate_private/install.json radwegpate_private/entries.json radwegpate_private/ radwegpate_private/photos/; do
+          for P in radwegpate_private/install.json radwegpate_private/entries.json radwegpate_private/ radwegpate_private/photos/ radwegpate_private/backups/ .env .env.example db/migrate.php db/db.php db/migrations/001_grundschema.sql; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/$P" || echo 000)
             echo "/$P → HTTP $CODE"
             echo "**/$P:** HTTP $CODE" >> "$GITHUB_STEP_SUMMARY"

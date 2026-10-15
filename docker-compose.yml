@@ -8,32 +8,57 @@ x-php: &php
   image: radwegpate-php:8.3
 
 services:
-  # Deine lokale App: http://localhost:8090 – Daten in public/radwegpate_private (gitignored),
-  # Konfiguration in public/config.php (legt rp.ps1 beim ersten Start an).
+  # MariaDB 10.11 wie bei all-inkl. Lokale Daten im Volume "dbdata" (bleibt bei stop erhalten,
+  # .\rp.ps1 reset löscht es). Datenbank "radwegpate" für die App, "radwegpate_test" legt der Rauchtest
+  # bei jedem Lauf neu an.
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: rp-root-lokal
+      MARIADB_DATABASE: radwegpate
+      MARIADB_USER: radwegpate
+      MARIADB_PASSWORD: radwegpate-lokal
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 30
+
+  # Deine lokale App: http://localhost:8090 – Fotos in public/radwegpate_private (gitignored),
+  # Zugangsdaten in public/.env (legt rp.ps1 beim ersten Start an).
   app:
     <<: *php
     ports:
       - "8090:80"
     volumes:
       - ./public:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
 
-  # Wegwerf-Instanz für den Rauchtest (nur mit --profile test).
+  # Wegwerf-Instanz für den Rauchtest (nur mit --profile test): eigene Datenbank radwegpate_test.
   test:
     <<: *php
     profiles: ["test"]
     entrypoint: ["/usr/local/bin/test-entrypoint.sh"]
     environment:
       INSTALL_TOKEN: rauchtest-lokal-0123456789abcdef
+      DB_ROOT_PASSWORD: rp-root-lokal
     # nicht :ro – Docker muss den Einhängepunkt radwegpate_private anlegen können.
     # Geschrieben wird nur in den tmpfs; deine lokalen Daten sieht diese Instanz nicht.
     volumes:
       - ./public:/var/www/html
     tmpfs:
       - /var/www/html/radwegpate_private:mode=1777
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@file_get_contents('http://localhost/api.php?action=status') ? 0 : 1);"]
       interval: 2s
-      retries: 15
+      retries: 30
 
   # Führt check.mjs und den Rauchtest gegen "test" aus.
   runner:
@@ -50,3 +75,6 @@ services:
       test:
         condition: service_healthy
     command: ["sh", "-c", "node scripts/check.mjs && node scripts/smoke-test.mjs"]
+
+volumes:
+  dbdata:

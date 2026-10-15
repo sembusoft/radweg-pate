@@ -7,6 +7,10 @@ Options -Indexes
 # die die App zusätzlich im Ordner selbst anlegt.
 RedirectMatch 404 "(?i)^/(.*/)?radwegpate_private(/|$)"
 
+# Datenbank-Skripte und Migrationen (db/) laufen nur auf der Kommandozeile (Deploy per SSH):
+# von außen nie erreichbar. Die Skripte selbst brechen außerhalb der CLI zusätzlich ab.
+RedirectMatch 404 "(?i)^/(.*/)?db(/|$)"
+
 # Konfiguration und Hilfsdateien nie direkt ausliefern
 <FilesMatch "^(config(\.example)?\.php|version\.php|\..*)$">
     Require all denied

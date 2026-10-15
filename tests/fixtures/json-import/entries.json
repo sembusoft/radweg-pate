@@ -1,0 +1,100 @@
+[
+ {
+  "id": "1111111111111111111111aa",
+  "createdAt": "2026-10-01T06:00:00+00:00",
+  "updatedAt": "2026-10-01T09:00:00+00:00",
+  "tourIds": [
+   "02",
+   "01"
+  ],
+  "tourId": "02",
+  "date": "2026-10-01",
+  "startTime": "08:05",
+  "endTime": "10:40",
+  "running": false,
+  "status": "mangel",
+  "notes": "Wetter gut",
+  "coords": null,
+  "issues": [
+   {
+    "id": "i_2222222222222222222222aa",
+    "tourId": "01",
+    "kind": "Belag",
+    "time": "08:30",
+    "place": "Brücke",
+    "description": "Schlagloch",
+    "status": "offen",
+    "coords": {
+     "lat": 48.3271,
+     "lon": 10.0432
+    },
+    "photos": [
+     {
+      "id": "3333333333333333333333aa",
+      "name": "loch.jpg",
+      "file": "3333333333333333333333aa.jpg",
+      "mime": "image/jpeg",
+      "size": 3
+     }
+    ],
+    "createdAt": "2026-10-01T06:30:00+00:00",
+    "completedAt": null
+   },
+   {
+    "id": "i_2222222222222222222222bb",
+    "tourId": "02",
+    "kind": "Bewuchs",
+    "time": null,
+    "place": "",
+    "description": "",
+    "status": "erledigt",
+    "coords": null,
+    "photos": [],
+    "createdAt": "2026-10-01T06:40:00+00:00",
+    "completedAt": "2026-10-05T12:00:00+00:00"
+   }
+  ],
+  "photos": []
+ },
+ {
+  "id": "1111111111111111111111bb",
+  "createdAt": "2026-10-10T06:00:00+00:00",
+  "updatedAt": "2026-10-10T06:00:00+00:00",
+  "tourIds": [
+   "07"
+  ],
+  "tourId": "07",
+  "date": "2026-10-10",
+  "startTime": "07:00",
+  "endTime": null,
+  "running": true,
+  "status": "gut",
+  "notes": "",
+  "coords": null,
+  "issues": [],
+  "photos": []
+ },
+ {
+  "id": "1111111111111111111111cc",
+  "date": "2025-05-20",
+  "tourId": "03",
+  "status": "mangel",
+  "issueKind": "Beschilderung",
+  "place": "Kreuzung Nord",
+  "notes": "Altformat",
+  "coords": {
+   "lat": 48.31,
+   "lon": 10.05
+  },
+  "createdAt": "2025-05-20T15:00:00+00:00",
+  "photos": [
+   {
+    "id": "3333333333333333333333bb",
+    "name": "schild.png",
+    "file": "3333333333333333333333bb.png",
+    "mime": "image/png",
+    "size": 3
+   }
+  ]
+ }
+]

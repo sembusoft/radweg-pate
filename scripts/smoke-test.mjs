@@ -229,7 +229,7 @@ async function main() {
   // Nur hinter Apache (lokale Docker-Umgebung, CHECK_HTACCESS=1): Sperren der .htaccess.
   // php -S in der CI wertet keine .htaccess aus – dort entfällt dieser Teil.
   if (process.env.CHECK_HTACCESS === '1') {
-    for (const p of ['radwegpate_private/install.json', 'radwegpate_private/entries.json', 'radwegpate_private/', 'config.php', 'version.php']) {
+    for (const p of ['radwegpate_private/install.json', 'radwegpate_private/entries.json', 'radwegpate_private/', 'radwegpate_private/backups/', 'config.php', '.env', '.env.example', 'version.php', 'db/db.php', 'db/migrate.php', 'db/migrations/001_grundschema.sql', 'db/README.md']) {
       const res = await fetch(BASE + '/' + p, { redirect: 'manual' });
       check(res.status === 403 || res.status === 404, `.htaccess sperrt /${p}`, 'HTTP ' + res.status);
     }

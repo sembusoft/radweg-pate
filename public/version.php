@@ -3,4 +3,4 @@
 // sw.js trägt dieselbe Nummer in CACHE_NAME ('radwegpate-<Version>');
 // scripts/check.mjs bricht in der CI ab, wenn beide auseinanderlaufen.
 declare(strict_types=1);
-const APP_VERSION = '3.8.7';
+const APP_VERSION = '3.9.0';

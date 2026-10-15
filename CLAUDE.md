@@ -1,7 +1,7 @@
 # CLAUDE.md — Radwegpate
 
 PWA für Radwegpaten (Touren aus KML, Kontrollfahrten, Mängel mit Foto/GPS, GPX für Komoot).
-PHP 8.1+ ohne Datenbank (JSON-Dateien), Vanilla JS, Leaflet. Produktiv: radweg-pate.de (all-inkl).
+PHP 8.1+ mit MariaDB 10.11 (Tabellen-Präfix `radpate_`, gemeinsame DB), Vanilla JS, Leaflet. Produktiv: radweg-pate.de (all-inkl).
 Ansprechpartner: Volker. **Antworten auf Deutsch, knapp: Ergebnis zuerst, Begründung kurz.**
 
 ## Zuerst lesen
@@ -18,4 +18,7 @@ Ansprechpartner: Volker. **Antworten auf Deutsch, knapp: Ergebnis zuerst, Begrü
   (`public/sw.js`) gemeinsam erhöhen.
 - Vor dem Push: `.\rp.ps1 test` (Docker; sonst `node scripts/check.mjs`). Lokal starten: `.\rp.ps1 start` → http://localhost:8090.
 - Befehle für Volkers Rechner in PowerShell. Arbeitsordner `C:\Dev\Radweg-Pate`, Branch `main`.
-- Keine Geheimnisse ins Repo; `config.php` und `radwegpate_private/` bleiben auf dem Server.
+- Keine Geheimnisse ins Repo: Zugangsdaten nur in `public/.env` (Vorlage `.env.example`); `.env` und
+  `radwegpate_private/` bleiben auf dem Server. `config.php` steht im Repo und liest die `.env`.
+- Schema nur über neue Dateien `public/db/migrations/NNN_name.sql` – nur erweiternd, idempotent,
+  jede Tabelle mit Präfix `radpate_` (Regeln: `public/db/README.md`).
