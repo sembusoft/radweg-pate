@@ -183,6 +183,15 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
     <button type="button" class="btn subtle full" id="logout-button"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#logout"/></svg> Abmelden</button>
     <p class="smallnote prefs-version">Radwegpate · Version <?= htmlspecialchars(APP_VERSION) ?></p>
   </div></dialog>
+  <dialog id="report-dialog" class="modal" aria-labelledby="report-heading"><div class="modal-content">
+    <div class="modal-heading"><div><p class="eyebrow">Kontrollfahrt</p><h2 id="report-heading">Mängelbericht</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
+    <p id="report-summary" class="muted"></p>
+    <p class="smallnote">PDF mit den Mängeln dieser Fahrt und den weiterhin offenen Mängeln ihrer Touren – mit Fotos und GPS-Links.</p>
+    <p id="report-status" class="smallnote" aria-live="polite"></p>
+    <button type="button" class="btn primary full" id="report-share" disabled><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#mail"/></svg> Per Mail senden</button>
+    <a class="btn outline full" id="report-open" href="#" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#file-text"/></svg> PDF ansehen</a>
+    <p class="smallnote" id="report-hint"></p>
+  </div></dialog>
   <dialog id="user-dialog" class="modal" aria-labelledby="user-heading"><form id="user-form" class="modal-content" method="dialog">
     <div class="modal-heading"><div><p class="eyebrow">Benutzer</p><h2 id="user-heading">Benutzer anlegen</h2></div><button type="button" class="close-dialog" data-close aria-label="Schließen"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#x"/></svg></button></div>
     <input type="hidden" id="user-id">

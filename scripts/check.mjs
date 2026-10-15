@@ -79,6 +79,7 @@ for (const f of migs) {
   /^\s*DELIMITER/mi.test(sql) && fail(`${f}: DELIMITER ist nicht erlaubt`);
 }
 /RedirectMatch 404 "\(\?i\)\^\/\(\.\*\/\)\?db\(\/\|\$\)"/.test(read('.htaccess')) ? ok('.htaccess sperrt db/') : fail('.htaccess sperrt db/ nicht');
+/RedirectMatch 404 "\(\?i\)\^\/\(\.\*\/\)\?lib\(\/\|\$\)"/.test(read('.htaccess')) ? ok('.htaccess sperrt lib/') : fail('.htaccess sperrt lib/ nicht');
 /read_json|update_json|write_json/.test(read('api.php')) ? fail('api.php nutzt noch JSON-Dateien statt der Datenbank') : ok('api.php: Daten nur über die Datenbank');
 
 // 6. Keine Secrets im Repository-Stand

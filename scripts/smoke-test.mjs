@@ -168,6 +168,15 @@ async function main() {
   r = await a.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'offen' } });
   check(r.data?.ok && r.data.issue?.completedAt === null, 'Mangel wieder geöffnet');
 
+  // Mängelbericht als PDF (mit Foto)
+  let pdf = await a.req('api.php?action=report&id=' + entryId + '&dl=1');
+  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+  check(pdf.status === 200 && pdf.headers.get('content-type') === 'application/pdf' && pdfBytes.subarray(0, 5).toString() === '%PDF-' && pdfBytes.includes(Buffer.from('/DCTDecode')),
+    'Mängelbericht als PDF mit Foto', pdf.status + ' ' + pdf.headers.get('content-type'));
+  check((pdf.headers.get('content-disposition') || '').startsWith('attachment; filename="radwegpate-maengel-2026-10-14-tour-01-03.pdf"'), 'PDF-Dateiname', pdf.headers.get('content-disposition'));
+  pdf = await fetch(BASE + '/api.php?action=report&id=' + entryId);
+  check(pdf.status === 401, 'Bericht ohne Anmeldung → 401');
+
   // Laufende Kontrollfahrt: anlegen, Mängel einzeln speichern, beenden
   r = await a.api('tripStart', { method: 'POST', json: { tourIds: ['02', '05'], date: '2026-10-14', startTime: '14:32' } });
   check(r.data?.ok && r.data.entry?.running === true && r.data.entry.startTime === '14:32', 'Fahrt gestartet (läuft, Startzeit)', r.data?.error);
@@ -239,6 +248,8 @@ async function main() {
   check(r.res.status === 403, 'fremde Fahrt ändern → 403');
   r = await p.api('deleteEntry', { method: 'POST', json: { id: entryId } });
   check(r.res.status === 403, 'fremde Fahrt löschen → 403');
+  r = await p.req('api.php?action=report&id=' + entryId);
+  check(r.status === 403, 'Bericht einer fremden Fahrt → 403');
   r = await p.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'erledigt' } });
   check(r.data?.ok && r.data.issue?.statusBy === 'Paul', 'Pate setzt fremden Mangel auf erledigt (statusBy)', r.data?.error);
   await a.api('issueStatus', { method: 'POST', json: { entryId, issueId, status: 'offen' } });
@@ -302,7 +313,7 @@ async function main() {
   // Nur hinter Apache (lokale Docker-Umgebung, CHECK_HTACCESS=1): Sperren der .htaccess.
   // php -S in der CI wertet keine .htaccess aus – dort entfällt dieser Teil.
   if (process.env.CHECK_HTACCESS === '1') {
-    for (const p of ['radwegpate_private/install.json', 'radwegpate_private/entries.json', 'radwegpate_private/', 'radwegpate_private/backups/', 'config.php', '.env', '.env.example', 'version.php', 'db/db.php', 'db/migrate.php', 'db/migrations/001_grundschema.sql', 'db/README.md']) {
+    for (const p of ['radwegpate_private/install.json', 'radwegpate_private/entries.json', 'radwegpate_private/', 'radwegpate_private/backups/', 'config.php', '.env', '.env.example', 'version.php', 'db/db.php', 'lib/pdf.php', 'db/migrate.php', 'db/migrations/001_grundschema.sql', 'db/README.md']) {
       const res = await fetch(BASE + '/' + p, { redirect: 'manual' });
       check(res.status === 403 || res.status === 404, `.htaccess sperrt /${p}`, 'HTTP ' + res.status);
     }

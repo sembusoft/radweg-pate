@@ -24,7 +24,9 @@ export const ICONS = [
   // Einstellungen
   'palette', 'text-size', 'lock', 'logout', 'refresh',
   // Benutzer
-  'users', 'user-plus', 'user'
+  'users', 'user-plus', 'user',
+  // Mängelbericht
+  'mail', 'file-text'
 ];
 
 const base = process.argv[2] || 'node_modules/@tabler/icons/icons/outline';

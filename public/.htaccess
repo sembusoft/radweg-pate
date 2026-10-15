@@ -10,6 +10,8 @@ RedirectMatch 404 "(?i)^/(.*/)?radwegpate_private(/|$)"
 # Datenbank-Skripte und Migrationen (db/) laufen nur auf der Kommandozeile (Deploy per SSH):
 # von außen nie erreichbar. Die Skripte selbst brechen außerhalb der CLI zusätzlich ab.
 RedirectMatch 404 "(?i)^/(.*/)?db(/|$)"
+# PHP-Bausteine (lib/) nur zum Einbinden, nie direkt aufrufbar.
+RedirectMatch 404 "(?i)^/(.*/)?lib(/|$)"
 
 # Konfiguration und Hilfsdateien nie direkt ausliefern
 <FilesMatch "^(config(\.example)?\.php|version\.php|\..*)$">

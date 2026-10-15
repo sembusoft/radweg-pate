@@ -642,6 +642,104 @@ if ($action==='photo' && $method==='GET') {
     header('Content-Disposition: inline; filename="foto.'.pathinfo($file,PATHINFO_EXTENSION).'"');
     readfile($file); exit;
 }
+// ── Mängelbericht als PDF: Mängel dieser Fahrt + weiterhin offene Mängel ihrer Touren ──
+if ($action==='report' && $method==='GET') {
+    $id=(string)($_GET['id']??'');
+    if (!preg_match('/^[a-f0-9]{24}$/',$id)) fail('Kontrollfahrt nicht gefunden.',404);
+    $row=db_row('SELECT * FROM radpate_entries WHERE id=?',[$id]) ?? fail('Kontrollfahrt nicht gefunden.',404);
+    require_owner($row);
+    require_once __DIR__.'/lib/pdf.php';
+    $e=entries_load($id)[0];
+    $routeNames=array_column(db_all('SELECT id, name FROM radpate_routes'),'name','id');
+    $tours=$e['tourIds'];
+    $old=[];
+    if ($tours) {
+        $ph=implode(',',array_fill(0,count($tours),'?'));
+        $rows=db_all("SELECT i.*, e.trip_date, u.name AS user_name, NULL AS status_by_name FROM radpate_issues i JOIN radpate_entries e ON e.id=i.entry_id LEFT JOIN radpate_users u ON u.id=e.user_id
+            WHERE i.route_id IN ($ph) AND i.status<>'erledigt' AND i.entry_id<>? ORDER BY e.trip_date, i.position",[...$tours,$id]);
+        foreach ($rows as $r) {
+            $pics=array_map('photo_out',db_all('SELECT * FROM radpate_photos WHERE issue_id=? ORDER BY position, created_at',[$r['id']]));
+            $old[]=['issue'=>issue_out($r,$pics),'date'=>$r['trip_date'],'by'=>$r['user_name']??''];
+        }
+    }
+    $de=fn(?string $iso)=>$iso?implode('.',array_reverse(explode('-',substr($iso,0,10)))):'';
+    $states=['offen'=>'Offen','gemeldet'=>'Gemeldet','bearbeitung'=>'In Bearbeitung','erledigt'=>'Erledigt'];
+    $green=[20,101,74]; $text=[24,32,28]; $muted=[95,108,101]; $red=[166,32,32]; $line=[205,218,210];
+    $pdf=new MiniPdf(); $pdf->addPage(); $L=$pdf->margin; $W=MiniPdf::W-2*$L;
+    $pdf->footer='Radwegpate · Mängelbericht vom '.$de($e['date']).' · erstellt '.(new DateTime('now',new DateTimeZone('Europe/Berlin')))->format('d.m.Y H:i');
+    // Kopf
+    $pdf->color($green); $pdf->rect(0,0,MiniPdf::W,78);
+    $pdf->color([255,255,255]); $pdf->font(true,19); $pdf->text($L,40,'Mängelbericht Kontrollfahrt');
+    $pdf->font(false,10); $pdf->text($L,60,'Radwegpate · Senden & Umgebung');
+    $pdf->y=100;
+    // Eckdaten
+    $meta=[
+        ['Datum',$de($e['date']).($e['startTime']?', '.$e['startTime'].($e['endTime']?'–'.$e['endTime']:'').' Uhr':'')],
+        ['Touren',implode("\n",array_map(fn($t)=>$t.' · '.($routeNames[$t]??'Tour'),$tours))],
+        ['Radwegpate',$e['userName']?:'—'],
+        ['Mängel',count($e['issues']).' auf dieser Fahrt erfasst · '.count($old).' weiterhin offen'],
+    ];
+    if (trim($e['notes'])!=='') $meta[]=['Notiz',$e['notes']];
+    foreach ($meta as [$k,$v]) {
+        $pdf->font(true,9.5); $pdf->color($muted); $pdf->need(14); $pdf->text($L,$pdf->y+10,mb_strtoupper($k));
+        $pdf->font(false,10.5); $pdf->color($text); $y0=$pdf->y; $pdf->para($v,$L+95,$W-95,1.3); $pdf->y=max($pdf->y,$y0+14)+4;
+    }
+    $mapUrl=fn(array $c)=>'https://www.google.com/maps/search/?api=1&query='.rawurlencode($c['lat'].','.$c['lon']);
+    $issueBlock=function (array $i, int $n, string $sub) use ($pdf,$L,$W,$states,$routeNames,$green,$text,$muted,$red,$line,$mapUrl) {
+        // Höhe vorab schätzen, damit ein Mangel möglichst nicht über zwei Seiten läuft.
+        $title=$n.'. '.$i['tourId'].' · '.($routeNames[$i['tourId']]??'').' – '.$i['kind'];
+        $pdf->font(true,11.5); $est=count($pdf->wrap($title,$W-92))*11.5*1.25;
+        $pdf->font(false,10); $est+=(1+($i['description']!==''?count($pdf->wrap($i['description'],$W-12)):0))*13.5;
+        $est+=13+($i['coords']?13:0)+($i['photos']?104:0)+18;
+        $pdf->need(min($est,700));
+        $top=$pdf->y; $topPage=$pdf->pageNo(); $x=$L+12; $w=$W-12;
+        $done=($i['status']??'offen')==='erledigt';
+        $pdf->font(true,11.5); $pdf->color($text);
+        $pdf->para($title,$x,$w-80,1.25);
+        $pdf->font(true,9); $pdf->color($done?$green:$red);
+        $st=$states[$i['status']]??'Offen'; $pdf->text($L+$W-$pdf->width(MiniPdf::enc($st)),$top+10,$st);
+        $pdf->font(false,10); $pdf->color($text);
+        $pdf->para('Ort: '.($i['place']!==''?$i['place']:'nicht angegeben'),$x,$w);
+        if ($i['description']!=='') $pdf->para($i['description'],$x,$w);
+        $pdf->font(false,9); $pdf->color($muted); $pdf->para($sub,$x,$w);
+        if ($i['coords']) {
+            $t='GPS '.number_format($i['coords']['lat'],5,',','').' / '.number_format($i['coords']['lon'],5,',','').' – in Google Maps öffnen';
+            $pdf->color($green); $pdf->need(13); $pdf->y+=9; $pdf->text($x,$pdf->y,$t);
+            $pdf->link($x,$pdf->y-9,$pdf->width(MiniPdf::enc($t)),12,$mapUrl($i['coords'])); $pdf->y+=4;
+        }
+        // Fotos (Vorschaubilder, JPEG), bis zu 3 nebeneinander
+        $pics=[];
+        foreach (array_slice($i['photos'],0,3) as $p) {
+            $f=storage().'/photos/'.basename($p['file']);
+            if (!is_file($f)) continue;
+            $t=photo_thumbnail($f,$p['id']) ?? $f;
+            $img=$pdf->addJpeg((string)file_get_contents($t));
+            if ($img) $pics[]=$img;
+        }
+        if ($pics) {
+            $h=96; $pdf->need($h+8); $px=$x; $py=$pdf->y+4;
+            foreach ($pics as [$name,$iw,$ih]) { $pw=min(150,$h*$iw/max(1,$ih)); $ph=$pw*$ih/max(1,$iw); $pdf->image($name,$px,$py,$pw,$ph); $px+=$pw+8; }
+            $pdf->y=$py+$h+2;
+        }
+        if ($pdf->pageNo()===$topPage) { $pdf->color($done?$green:$red); $pdf->rect($L,$top,3,max(14,$pdf->y-$top)); }  // farbige Kante
+        $pdf->y+=8; $pdf->strokeColor($line); $pdf->line($L,$pdf->y,$L+$W,$pdf->y); $pdf->y+=10;
+    };
+    $heading=function (string $t) use ($pdf,$L,$green,$text) {
+        $pdf->need(40); $pdf->y+=10; $pdf->font(true,13); $pdf->color($green); $pdf->text($L,$pdf->y+13,$t); $pdf->y+=24;
+    };
+    $heading('Auf dieser Fahrt erfasst ('.count($e['issues']).')');
+    if (!$e['issues']) { $pdf->font(false,10); $pdf->color($muted); $pdf->para('Keine Mängel – alles in Ordnung.'); }
+    foreach ($e['issues'] as $k=>$i) $issueBlock($i,$k+1,'Erfasst '.$de($e['date']).($i['time']?', '.$i['time'].' Uhr':'').($i['statusBy']&&$i['status']==='erledigt'?' · erledigt von '.$i['statusBy']:''));
+    $heading('Weiterhin offene Mängel dieser Touren ('.count($old).')');
+    if (!$old) { $pdf->font(false,10); $pdf->color($muted); $pdf->para('Keine älteren offenen Mängel.'); }
+    foreach ($old as $k=>$o) $issueBlock($o['issue'],$k+1,'Erfasst '.$de($o['date']).($o['issue']['time']?', '.$o['issue']['time'].' Uhr':'').($o['by']?' von '.$o['by']:''));
+    $name='radwegpate-maengel-'.$e['date'].'-tour-'.implode('-',$tours).'.pdf';
+    $data=$pdf->output('Mängelbericht '.$de($e['date']));
+    header('Content-Type: application/pdf');
+    header('Content-Length: '.strlen($data));
+    header('Content-Disposition: '.(($_GET['dl']??'')==='1'?'attachment':'inline').'; filename="'.$name.'"');
+    echo $data; exit;
+}
 if ($action==='export' && $method==='GET') {
     require_admin();
     header('Content-Type: application/json; charset=utf-8');

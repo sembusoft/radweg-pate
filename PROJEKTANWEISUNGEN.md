@@ -35,6 +35,7 @@ public/                 genau das, was auf den Server geht (Webroot radweg-pate.
   .htaccess             Sperren (config, .env, Datenordner, db/) und Cache-Header
   config.php            liest die .env (Umgebung → .env → Vorgabe); im Repo, ohne Geheimnisse
   .env.example          Vorlage; die .env liegt NUR auf dem Server bzw. lokal
+  lib/pdf.php           MiniPdf – kleiner PDF-Erzeuger ohne Abhängigkeiten (Mängelbericht); von außen gesperrt
   db/                   Datenbank (nur Kommandozeile, von außen gesperrt): db.php, migrations/,
                         migrate.php, import-json.php, backup.php, check.php
   assets/
@@ -74,6 +75,10 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
   - Benutzer werden nie gelöscht, nur deaktiviert. Rolle/Zugang/Passwort geändert → Sitzungen enden
     (`password_version`).
   - Neue Schreib-Aktion: `entry_lock($id)` prüft den Besitz; Admin-Aktionen mit `require_admin()`.
+  - Mängelbericht (`api.php?action=report&id=…`, ab 3.12.0): PDF mit den Mängeln der Fahrt und den
+    weiterhin offenen Mängeln ihrer Touren (alle Paten), Fotos als JPEG-Vorschau, GPS-Links. Nur Ersteller/Admin.
+    Versand über das Teilen-Menü (Datei vorher laden, `navigator.share` direkt im Tipp); Rückfall:
+    Download + `mailto:` mit Betreff/Text.
   - Touren ↔ Paten (`radpate_user_routes`, ab 3.11.0): Admin ordnet im Benutzer-Dialog zu, eine Tour
     kann mehrere Paten haben. Wirkung nur in der Oberfläche: eigene Touren vorn und vorausgewählt
     (Touren-Knöpfe, Karte, „Fahrt beginnen“), andere bleiben erreichbar.

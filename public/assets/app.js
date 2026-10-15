@@ -157,7 +157,7 @@ function renderDiary(){
      const quickAction=`<button class="btn outline small issue-quick-btn" type="button" data-issue-toggle="${esc(e.id)}:${esc(issue.id)}" data-target-status="${isDone?'offen':'erledigt'}">${isDone?ic('arrow-back-up')+' Wieder öffnen':ic('check')+' Als erledigt markieren'}</button>`;
      return `<div class="issue-list-row"><div class="issue-list-head"><span><b>${i+1}. ${issue.time?esc(issue.time)+' · ':''}${esc(issue.tourId)} · ${esc(issue.kind)}</b> — ${esc(issue.place||'Ort nicht angegeben')}</span><span class="issue-state ${esc(issue.status||'offen')}">${esc(ISSUE_STATES[issue.status]||'Offen')}</span></div>${issue.description?`<p class="entry-notes">${esc(issue.description)}</p>`:''}${issue.completedAt&&isDone?`<p class="smallnote">Erledigt: ${new Date(issue.completedAt).toLocaleDateString('de-DE')}${issue.statusBy?' · '+esc(issue.statusBy):''}</p>`:''}${point}${pics}<div class="issue-inline-actions">${quickAction}</div></div>`;
    }).join('')}</div>`:'';
-   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt${byLabel(e)} · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}${isMine(e)?`<div class="entry-bottom">${e.running&&e.own?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div>`:''}</article>`;
+   return `<article class="entry-card"><div class="entry-head"><div><span class="route-num">${textDate(e.date)}${e.startTime?' · '+esc(timeSpan(e)):''} · ${ids.length} ${ids.length===1?'TOUR':'TOUREN'}</span><h3>${routeNames}</h3><p class="entry-sub">Kontrollfahrt${byLabel(e)} · ${issues.length} ${issues.length===1?'Einzelmangel':'Einzelmängel'}</p></div>${e.running?`<span class="status hinweis">${ic('bike')} läuft</span>`:''}<span class="status ${pendingCount?'mangel':'gut'}">${pendingCount?ic('alert-triangle')+' '+pendingCount+' offen':ic('circle-check')+(issues.length?' Alle erledigt':' In Ordnung')}</span></div>${e.notes?`<p class="entry-notes">${esc(e.notes)}</p>`:''}${issueTable}${photoHTML}${pos}${isMine(e)?`<div class="entry-bottom">${e.running&&e.own?`<button class="btn primary small" type="button" data-trip-open="${e.id}">${ic('bike')} Fortsetzen</button>`:''}${!e.running?`<button class="text-btn" type="button" data-report="${e.id}">${ic('file-text')} Bericht</button>`:''}<button class="text-btn" type="button" data-entry-edit="${e.id}">${ic('pencil')} Bearbeiten</button><button class="text-btn" type="button" data-entry-delete="${e.id}">${ic('trash')} Löschen</button></div>`:''}</article>`;
  }).join(''):(withIssues?'<div class="empty">Keine passenden Mängel.</div>':'<div class="empty">Hier stehen deine Fahrten, sobald du die erste Strecke dokumentiert hast.</div>');
 }
 // ── Laufende Kontrollfahrt ─────────────────────────────────────────────
@@ -297,7 +297,7 @@ async function finishTrip(ev){
  try{
    await api('tripUpdate','POST',{entryId:e.id,endTime:$('#trip-end-time').value,notes:$('#trip-notes').value,running:false});
    for(const file of files){const resized=await compressPhoto(file);const fd=new FormData();fd.set('entryId',e.id);fd.set('file',resized,resized.name);try{await api('upload','POST',fd);}catch(err){}}
-   $('#trip-finish-dialog').close();await refresh();selectTab('diary');toast('Kontrollfahrt abgeschlossen.');
+   $('#trip-finish-dialog').close();await refresh();selectTab('diary');toast('Kontrollfahrt abgeschlossen.');openReport(e.id);
  }catch(err){toast(err.message,true);}finally{btn.disabled=false;}
 }
 async function discardTrip(){
@@ -470,7 +470,47 @@ async function saveUser(ev){
  try{const d=await api('userSave','POST',payload);$('#user-dialog').close();await loadUsers();await refresh();
    toast(pw?`${d.user.name} gespeichert – Startpasswort: ${pw}`:`${d.user.name} gespeichert.`);}catch(err){toast(err.message,true);}
 }
+// ── Mängelbericht (PDF) teilen: Teilen-Menü (Handy: Mail mit Anhang), sonst Download + Mail-Entwurf ──
+const report={id:'',file:null,subject:'',text:''};
+function reportUrl(id,dl=false){return 'api.php?action=report&id='+encodeURIComponent(id)+(dl?'&dl=1':'');}
+async function openReport(id){
+ const e=state.entries.find(x=>x.id===id);if(!e)return;
+ const tours=entryRoutes(e).map(t=>`${t} · ${routeById(t)?.name||'Tour'}`).join(', ');
+ Object.assign(report,{id,file:null,subject:`Radwegpate: Mängelbericht ${textDate(e.date)} (Tour ${entryRoutes(e).join(', ')})`,
+   text:`Mängelbericht der Kontrollfahrt vom ${textDate(e.date)}${e.startTime?', '+timeSpan(e)+' Uhr':''}\nTouren: ${tours}\nAuf dieser Fahrt erfasst: ${entryIssues(e).length} ${entryIssues(e).length===1?'Mangel':'Mängel'}\n\nDetails, Fotos und GPS-Links im angehängten PDF.\n${state.me?.name?'\n'+state.me.name:''}`});
+ $('#report-summary').textContent=`${textDate(e.date)} · Tour ${entryRoutes(e).join(', ')} · ${entryIssues(e).length} ${entryIssues(e).length===1?'Mangel':'Mängel'} erfasst`;
+ $('#report-open').href=reportUrl(id);$('#report-open').hidden=iosStandalone(); // in der iPhone-App gäbe es aus der Vorschau keinen Weg zurück
+ $('#report-share').disabled=true;$('#report-status').textContent='PDF wird erstellt …';$('#report-hint').textContent='';
+ $('#report-dialog').showModal();
+ // Vorher laden: Teilen muss direkt im Tipp passieren, sonst blockiert das Handy (Nutzeraktion verfallen).
+ try{
+   const res=await fetch(reportUrl(id,true),{credentials:'same-origin'});
+   if(!res.ok)throw new Error('PDF konnte nicht erstellt werden ('+res.status+').');
+   const name=((res.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)||[])[1]||'radwegpate-bericht.pdf';
+   report.file=new File([await res.blob()],name,{type:'application/pdf'});
+   if(report.id!==id)return;
+   const share=canShareFile(report.file);
+   $('#report-status').textContent=`Bereit: ${name} (${Math.max(1,Math.round(report.file.size/1024))} KB)`;
+   $('#report-share').disabled=false;
+   $('#report-hint').textContent=share?'Im Teilen-Menü „Mail“ wählen – das PDF hängt schon an.':'Das PDF wird heruntergeladen und ein Mail-Entwurf geöffnet – bitte die Datei dort anhängen.';
+ }catch(err){$('#report-status').textContent=err.message;}
+}
+function canShareFile(file){try{return !!navigator.canShare&&navigator.canShare({files:[file]});}catch(e){return false;}}
+function shareReport(){
+ const f=report.file;if(!f)return;
+ if(canShareFile(f)){
+   navigator.share({files:[f],title:report.subject,text:report.text}).then(()=>{$('#report-dialog').close();toast('Bericht geteilt.');})
+     .catch(err=>{if(err.name!=='AbortError')toast('Teilen nicht möglich: '+err.message,true);});
+   return;
+ }
+ // Rückfall (z. B. Firefox am PC): Datei speichern, dann Mail-Programm mit Betreff und Text öffnen.
+ const url=URL.createObjectURL(f),a=document.createElement('a');a.href=url;a.download=f.name;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),60000);
+ setTimeout(()=>{location.href='mailto:?subject='+encodeURIComponent(report.subject)+'&body='+encodeURIComponent(report.text+'\n\n(Anhang: '+f.name+')');},400);
+ toast('PDF gespeichert – bitte im Mail-Entwurf anhängen.');
+}
 function setupEvents(){
+ $('#report-share').addEventListener('click',shareReport);
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
@@ -521,6 +561,7 @@ function setupEvents(){
    const resume=e.target.closest('[data-trip-open]');if(resume)openTrip(resume.dataset.tripOpen);
    const entryEdit=e.target.closest('[data-entry-edit]');if(entryEdit)openEntry('01',entryEdit.dataset.entryEdit);
    const del=e.target.closest('[data-entry-delete]');if(del)deleteEntry(del.dataset.entryDelete);
+   const rep=e.target.closest('[data-report]');if(rep)openReport(rep.dataset.report);
    const start=e.target.closest('[data-tour-start]');if(start)startTour([start.dataset.tourStart]);
    const toggle=e.target.closest('[data-issue-toggle]');if(toggle){const [entryId,issueId]=toggle.dataset.issueToggle.split(':');changeIssueStatus(entryId,issueId,toggle.dataset.targetStatus);}
    const osmAll=e.target.closest('[data-show-selected-map]');if(osmAll){
