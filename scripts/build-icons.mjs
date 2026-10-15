@@ -26,7 +26,9 @@ export const ICONS = [
   // Benutzer
   'users', 'user-plus', 'user',
   // Mängelbericht
-  'mail', 'file-text'
+  'mail', 'file-text',
+  // Startpunkt
+  'home'
 ];
 
 const base = process.argv[2] || 'node_modules/@tabler/icons/icons/outline';

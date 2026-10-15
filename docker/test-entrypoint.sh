@@ -14,6 +14,7 @@ DB_NAME=radwegpate_test
 DB_USER=radwegpate
 DB_PASSWORD=radwegpate-lokal
 MAX_UPLOAD_MB=8
+ROUTING_PROVIDER=straight
 ENV
 php -r '$p=new PDO("mysql:host=db", "root", getenv("DB_ROOT_PASSWORD"));
   $p->exec("DROP DATABASE IF EXISTS radwegpate_test");

@@ -162,6 +162,31 @@ async function main() {
   r = await a.api('bootstrap');
   check(!r.data?.entries?.some(e => e.id === demoTrip), 'Demo-Fahrt ist weg');
 
+  // Startpunkt je Pate + Zufahrt (im Test mit ROUTING_PROVIDER=straight, ohne Netz)
+  r = await a.api('bootstrap');
+  if (r.data?.routing === 'straight') {
+    check(r.data.me.start === null, 'noch kein Startpunkt');
+    r = await a.api('approach&ids=01');
+    check(r.res.status === 400 && /Startpunkt/.test(r.data?.error || ''), 'Zufahrt ohne Startpunkt → Hinweis');
+    r = await a.api('myStart', { method: 'POST', json: { lat: 99, lon: 10 } });
+    check(r.res.status === 400, 'ungültiger Startpunkt abgelehnt');
+    r = await a.api('myStart', { method: 'POST', json: { lat: 48.3300, lon: 10.0600, label: 'Zuhause' } });
+    check(r.data?.start?.label === 'Zuhause', 'Startpunkt gespeichert', r.data?.error);
+    r = await a.api('approach&ids=01');
+    const ap = r.data?.approach;
+    check(ap && ap.to.km > 0 && ap.back.km > 0 && JSON.stringify(ap.to.line.at(-1)) === '[10.04,48.32]', 'Zufahrt zum Tour-Anfang berechnet', JSON.stringify(ap?.to));
+    let g = await a.req('api.php?action=gpx&id=01&approach=1');
+    const gt = await g.text();
+    check(g.status === 200 && (gt.match(/<trkpt /g) || []).length === 9 && /mit-zufahrt\.gpx/.test(g.headers.get('content-disposition') || ''), 'GPX mit Zufahrt (2 + 5 + 2 Punkte, eine Spur)');
+    const tok = (await a.api('bootstrap')).data.gpxToken;
+    g = await fetch(BASE + '/api.php?action=gpx&id=01&approach=1&dl=' + tok);
+    check(g.status === 200 && ((await g.text()).match(/<trkpt /g) || []).length === 9, 'GPX mit Zufahrt über Schlüssel-Link (iPhone-App)');
+    r = await a.api('myStart', { method: 'POST', json: { clear: true } });
+    check(r.data?.ok && r.data.start === null, 'Startpunkt entfernt');
+    g = await a.req('api.php?action=gpx&id=01&approach=1');
+    check(g.status === 409, 'GPX mit Zufahrt ohne Startpunkt → 409');
+  } else console.log('  (Zufahrt-Test übersprungen: ROUTING_PROVIDER=straight nicht gesetzt)');
+
   // Kontrollfahrt mit Mangel
   const issueId = 'i_' + hex(12);
   r = await a.api('entry', { method: 'POST', json: { tourIds: ['01', '03'], date: '2026-10-14', startTime: '09:05', endTime: '10:15', notes: 'Rauchtest', coords: null,

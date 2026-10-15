@@ -20,8 +20,9 @@ $okToken = preg_match('/^[a-f0-9]{32}$/', $token) === 1;
 $okId = preg_match('/^0[0-7]$/', $id) === 1; // 00 = Demo-Tour
 $okIds = preg_match('/^0[1-7](,0[1-7]){1,6}$/', $ids) === 1;
 $valid = $okToken && ($okId xor $okIds);
-$query = $valid ? ($okIds ? 'ids=' . rawurlencode($ids) : 'id=' . rawurlencode($id)) . '&dl=' . $token : '';
-$label = $okIds ? 'Touren ' . str_replace(',', ' + ', $ids) : 'Tour ' . $id;
+$withApproach = ($_GET['approach'] ?? '') === '1';  // mit Zufahrt ab dem Startpunkt des Paten
+$query = $valid ? ($okIds ? 'ids=' . rawurlencode($ids) : 'id=' . rawurlencode($id)) . '&dl=' . $token . ($withApproach ? '&approach=1' : '') : '';
+$label = ($okIds ? 'Touren ' . str_replace(',', ' + ', $ids) : 'Tour ' . $id) . ($withApproach ? ' mit Zufahrt' : '');
 $v = rawurlencode(APP_VERSION);
 $e = fn(string $s) => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 ?><!doctype html>

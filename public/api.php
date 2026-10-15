@@ -145,6 +145,54 @@ function login_failed(): void { dbq('INSERT INTO radpate_login_attempts (ip_hash
 // ── Lesemodell: Datenbankzeilen → JSON-Form der App (unverändert gegenüber den JSON-Dateien) ──
 const ROUTE_IDS=['01','02','03','04','05','06','07'];   // echte Touren
 const DEMO_ID='00';                                       // Demo-Tour (Migration 004)
+require_once __DIR__.'/lib/routing.php';
+/** Startpunkt des Paten oder null. */
+function user_start(int $uid): ?array {
+    $r=db_row('SELECT start_lat, start_lon, start_label FROM radpate_users WHERE id=?',[$uid]);
+    if (!$r || $r['start_lat']===null || $r['start_lon']===null) return null;
+    return ['lat'=>(float)$r['start_lat'],'lon'=>(float)$r['start_lon'],'label'=>(string)($r['start_label']??'')];
+}
+/** KML-Linien je Tour (Demo-Tour: Linien ihrer Quell-Tour). */
+function route_lines_by_id(array $ids): array {
+    $m=map_info(); $byId=array_fill_keys($ids,[]);
+    $demoSrc=in_array(DEMO_ID,$ids,true)?(string)(db_val("SELECT demo_source FROM radpate_routes WHERE id='00'")??''):'';
+    foreach(($m['sources']??[]) as $src){
+        $id=$m['assignments'][$src['id']]??'';
+        if(array_key_exists($id,$byId))foreach(($src['lines']??[]) as $line)$byId[$id][]=$line;
+        if($demoSrc!=='' && $id===$demoSrc)foreach(($src['lines']??[]) as $line)$byId[DEMO_ID][]=$line;
+    }
+    return $byId;
+}
+/**
+ * Zufahrt vom Startpunkt des Paten zum Anfang der Tour(en) und vom Ende zurück.
+ * Gespeichert je Pate + Touren; neu gerechnet nur bei anderem Startpunkt, anderer Linie oder anderem Anbieter.
+ */
+function approach_for(int $uid, array $ids): ?array {
+    $start=user_start($uid); if (!$start) return null;
+    $byId=route_lines_by_id($ids);
+    foreach ($ids as $id) if (!$byId[$id]) fail('Für Tour '.$id.' ist keine KML-Linie vorhanden.',404);
+    $first=$byId[$ids[0]][0][0]; $lastLines=$byId[$ids[count($ids)-1]]; $lastLine=$lastLines[count($lastLines)-1]; $last=$lastLine[count($lastLine)-1];
+    $from=[(float)$start['lon'],(float)$start['lat']]; $a=[(float)$first[0],(float)$first[1]]; $b=[(float)$last[0],(float)$last[1]];
+    $key=sha1(json_encode([$from,$a,$b,routing_provider()]));
+    $routeKey=implode('-',$ids);
+    $row=db_row('SELECT * FROM radpate_approaches WHERE user_id=? AND route_key=?',[$uid,$routeKey]);
+    if (!$row || $row['cache_key']!==$key) {
+        try {
+            $to=route_between($from,$a);
+            // Rundtour (Ende ≈ Anfang): Rückweg = Zufahrt rückwärts, spart eine Anfrage.
+            $back=geo_dist($a,$b)<50 ? ['line'=>array_reverse($to['line']),'m'=>$to['m']] : route_between($b,$from);
+        } catch (RuntimeException $e) {
+            error_log('Radwegpate Routing: '.$e->getMessage());
+            fail('Zufahrt konnte nicht berechnet werden: '.$e->getMessage(),502);
+        }
+        dbq('REPLACE INTO radpate_approaches (user_id, route_key, cache_key, to_line, to_m, back_line, back_m, provider, computed_at) VALUES (?,?,?,?,?,?,?,?,?)',
+            [$uid,$routeKey,$key,json_encode($to['line']),$to['m'],json_encode($back['line']),$back['m'],routing_provider(),db_now()]);
+        $row=db_row('SELECT * FROM radpate_approaches WHERE user_id=? AND route_key=?',[$uid,$routeKey]);
+    }
+    return ['to'=>['line'=>json_decode($row['to_line'],true),'km'=>round($row['to_m']/1000,1)],
+            'back'=>['line'=>json_decode($row['back_line'],true),'km'=>round($row['back_m']/1000,1)],
+            'provider'=>$row['provider'],'start'=>$start];
+}
 /** Demo-Fahrten samt Fotos löschen; $olderThanDays=null: alle. Gibt die Zahl gelöschter Fahrten zurück. */
 function demo_purge(?int $olderThanDays=null): int {
     $sql="SELECT e.id FROM radpate_entries e JOIN radpate_entry_routes er ON er.entry_id=e.id AND er.route_id='00'".($olderThanDays!==null?' WHERE e.created_at < UTC_TIMESTAMP() - INTERVAL '.(int)$olderThanDays.' DAY':'');
@@ -331,19 +379,22 @@ if ($action==='logout' && $method==='POST') {
 // Fenster. Dieses teilt die Cookies der App nicht – deshalb trägt der Link einen zeitlich begrenzten
 // Schlüssel, der NUR den GPX-Download erlaubt (12 h, je Sitzung, in radpate_gpx_tokens).
 const GPX_TOKEN_TTL = 12 * 3600;
-function gpx_token_valid(string $token): bool {
-    if (!preg_match('/^[a-f0-9]{32}$/',$token)) return false;
-    return db_val('SELECT 1 FROM radpate_gpx_tokens WHERE token=? AND expires_at > UTC_TIMESTAMP()',[$token])!==null;
+/** Gültiger Schlüssel → Benutzer-ID (0 = Schlüssel ohne Benutzer, von vor 3.14), sonst null. */
+function gpx_token_user(string $token): ?int {
+    if (!preg_match('/^[a-f0-9]{32}$/',$token)) return null;
+    $row=db_row('SELECT user_id FROM radpate_gpx_tokens WHERE token=? AND expires_at > UTC_TIMESTAMP()',[$token]);
+    return $row===null ? null : (int)($row['user_id']??0);
 }
 function issue_gpx_token(): string {
     if (!empty($_SESSION['gpxToken']) && (int)($_SESSION['gpxTokenExp']??0) > time()+3600) return (string)$_SESSION['gpxToken'];
     $token=bin2hex(random_bytes(16)); $exp=time()+GPX_TOKEN_TTL;
     dbq('DELETE FROM radpate_gpx_tokens WHERE expires_at <= UTC_TIMESTAMP()');
-    dbq('INSERT INTO radpate_gpx_tokens (token, expires_at) VALUES (?,?)',[$token,gmdate('Y-m-d H:i:s',$exp)]);
+    dbq('INSERT INTO radpate_gpx_tokens (token, user_id, expires_at) VALUES (?,?,?)',[$token,my_id()?:null,gmdate('Y-m-d H:i:s',$exp)]);
     $_SESSION['gpxToken']=$token; $_SESSION['gpxTokenExp']=$exp;
     return $token;
 }
-$gpxByToken = $action==='gpx' && $method==='GET' && gpx_token_valid((string)($_GET['dl']??''));
+$gpxTokenUser = ($action==='gpx' && $method==='GET') ? gpx_token_user((string)($_GET['dl']??'')) : null;
+$gpxByToken = $gpxTokenUser!==null;
 if (!$gpxByToken) {
     require_login();
     if ($method==='POST') check_csrf();
@@ -365,7 +416,8 @@ function map_valid_id(string $value): bool { return preg_match('/^[a-f0-9]{16}$/
 function gpx_escape(string $s): string { return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8'); }
 if ($action==='bootstrap' && $method==='GET') {
     $u=me();
-    result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'routeIds'=>user_route_ids((int)$u['id'])],
+    result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'routeIds'=>user_route_ids((int)$u['id']),'start'=>user_start((int)$u['id'])],
+        'routing'=>routing_provider(),
         'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
 }
 if ($action==='route' && $method==='POST') {
@@ -774,6 +826,26 @@ if ($action==='password' && $method==='POST') {
     result(['ok'=>true]);
 }
 
+// ── Startpunkt des Paten und Zufahrt ──
+if ($action==='myStart' && $method==='POST') {
+    $in=post_json();
+    if (!empty($in['clear'])) {
+        dbq('UPDATE radpate_users SET start_lat=NULL, start_lon=NULL, start_label=NULL WHERE id=?',[my_id()]);
+    } else {
+        $c=valid_coords(['lat'=>$in['lat']??null,'lon'=>$in['lon']??null]) ?? fail('Startpunkt fehlt.');
+        dbq('UPDATE radpate_users SET start_lat=?, start_lon=?, start_label=? WHERE id=?',[$c['lat'],$c['lon'],norm((string)($in['label']??''),120),my_id()]);
+    }
+    dbq('DELETE FROM radpate_approaches WHERE user_id=?',[my_id()]);
+    result(['ok'=>true,'start'=>user_start(my_id())]);
+}
+if ($action==='approach' && $method==='GET') {
+    $ids=array_values(array_filter(explode(',',(string)($_GET['ids']??$_GET['id']??''))));
+    if (!$ids || count($ids)>7) fail('Unbekannte Tour.');
+    foreach ($ids as $id) if (!in_array($id,[DEMO_ID,...ROUTE_IDS],true)) fail('Unbekannte Tour.');
+    $ap=approach_for(my_id(),$ids) ?? fail('Bitte zuerst deinen Startpunkt festlegen (Zahnrad → Mein Startpunkt).');
+    result(['ok'=>true,'approach'=>$ap]);
+}
+
 // ── Demo-Tour (nur Admin): Strecke wählen, Demo-Daten löschen ──
 if ($action==='demoConfig' && $method==='POST') {
     require_admin();
@@ -936,15 +1008,7 @@ if ($action==='gpx' && $method==='GET') {
     if (($combo && (count($ids)<2 || count($ids)>7 || count($ids)!==count(array_unique($ids))))
         || (!$combo&&count($ids)!==1)) fail('Für eine Kombination bitte zwei bis sieben unterschiedliche Touren wählen.');
     foreach($ids as $id) if(!in_array($id,$valid,true)) fail('Unbekannte Tour.');
-    $m=map_info();$byId=[];
-    foreach($ids as $id) $byId[$id]=[];
-    // Demo-Tour: Linien der eingestellten echten Tour verwenden.
-    $demoSrc=in_array(DEMO_ID,$ids,true)?(string)(db_val("SELECT demo_source FROM radpate_routes WHERE id='00'")??''):'';
-    foreach(($m['sources']??[]) as $src){
-        $id=$m['assignments'][$src['id']]??'';
-        if(array_key_exists($id,$byId))foreach(($src['lines']??[]) as $line)$byId[$id][]=$line;
-        if($demoSrc!=='' && $id===$demoSrc)foreach(($src['lines']??[]) as $line)$byId[DEMO_ID][]=$line;
-    }
+    $byId=route_lines_by_id($ids); // Demo-Tour: Linien ihrer Quell-Tour
     foreach($ids as $id)if(!$byId[$id])fail('Für Tour '.$id.' ist keine KML-Linie vorhanden.',404);
     $routeNames=array_column(db_all('SELECT id, name FROM radpate_routes'),'name','id');$names=[];
     foreach($ids as $id) $names[]=$routeNames[$id]??('Tour '.$id);
@@ -969,6 +1033,18 @@ if ($action==='gpx' && $method==='GET') {
         $lines=$byId[$ids[0]];
         $name=$names[0];
         $filename='radwegpate-tour-'.$ids[0].'.gpx';
+    }
+    // Mit Zufahrt (approach=1): Startpunkt → Tour → zurück als EINE durchgehende Spur (Naviki-tauglich).
+    if (($_GET['approach']??'')==='1') {
+        $uid=$gpxByToken ? (int)$gpxTokenUser : my_id();
+        $ap=$uid>0 ? approach_for($uid,$ids) : null;
+        if (!$ap) fail('Für GPX mit Zufahrt bitte zuerst den Startpunkt festlegen.',409);
+        $track=$ap['to']['line'];
+        foreach ($lines as $line) foreach ($line as $pt) $track[]=$pt;
+        foreach ($ap['back']['line'] as $pt) $track[]=$pt;
+        $lines=[$track];
+        $name.=' – ab Startpunkt'.($ap['start']['label']!==''?' ('.$ap['start']['label'].')':'');
+        $filename=str_replace('.gpx','-mit-zufahrt.gpx',$filename);
     }
     header('Content-Type: application/gpx+xml; charset=utf-8');
     // Schlüssel-Link: inline, außer die Download-Seite gpx.php fordert ausdrücklich eine Datei an (save=1).

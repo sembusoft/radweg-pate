@@ -88,7 +88,7 @@ if (existsSync(root + '.env')) console.log('hinweis public/.env liegt lokal vor 
 const cfg = read('config.php');
 /define\('APP_(INSTALL_TOKEN|DB_NAME|DB_USER|DB_PASS)',\s*'/.test(cfg) ? fail('config.php enthält Zugangsdaten als Text – gehören in die .env') : ok('config.php ohne Zugangsdaten (liest .env)');
 const example = read('.env.example');
-const filled = [...example.matchAll(/^(INSTALL_TOKEN|DB_NAME|DB_USER|DB_PASSWORD)=(.+)$/gm)].map(m => m[1]);
+const filled = [...example.matchAll(/^(INSTALL_TOKEN|DB_NAME|DB_USER|DB_PASSWORD|ORS_API_KEY)=(.+)$/gm)].map(m => m[1]);
 filled.length ? fail('.env.example enthält Werte für ' + filled.join(', ') + ' – Vorlage muss leer bleiben') : ok('.env.example ohne Zugangsdaten');
 const deployIgnore = readFileSync(new URL('../.deployignore', import.meta.url), 'utf8');
 /^\/\.env$/m.test(deployIgnore) ? ok('.deployignore schützt /.env') : fail('.deployignore: /.env fehlt (Deploy könnte die .env löschen)');

@@ -94,6 +94,19 @@ php db/backup.php             # Sicherung nach radwegpate_private/backups/
 Ist `php` auf der SSH-Kommandozeile eine andere Version als die der Domain, im Environment die
 Variable `PHP_BIN` setzen (z. B. `php83`).
 
+### 3c. Routenplaner für die Zufahrt (ab 3.14.0)
+
+Die Zufahrt vom Startpunkt eines Paten zur Tour rechnet der Server bei einem Fahrrad-Routenplaner.
+Ohne weitere Einstellung: **BRouter** (brouter.de, kein Schlüssel, faire Nutzung). Empfohlen für den
+Dauerbetrieb: **openrouteservice** – kostenloser Schlüssel unter https://openrouteservice.org/dev/#/signup,
+dann in die `.env` auf dem Server:
+
+```ini
+ORS_API_KEY=…
+```
+
+Ergebnisse werden gespeichert; neu gerechnet wird nur bei neuem Startpunkt oder geänderter Tour-Linie.
+
 ### 4. GitHub – Environment `production`
 
 Repository → Settings → Environments → `production` anlegen:

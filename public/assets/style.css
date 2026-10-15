@@ -325,6 +325,14 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
   background: var(--text); color: var(--bg); font-size: .9375rem; font-weight: 600;
   box-shadow: 0 6px 25px rgba(0, 0, 0, .3);
 }
+.approach-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; font-size: .875rem; color: var(--text-muted); }
+.approach-box { margin-top: 10px; padding: 10px 12px; border: var(--bw) dashed var(--border-strong); border-radius: var(--radius-sm); }
+.approach-box p { margin: 0 0 8px; font-size: .875rem; line-height: 1.45; }
+.approach-box p .ic { vertical-align: -3px; margin-right: 4px; }
+.approach-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.start-info { font-weight: 700; margin: 4px 0 10px; }
+.start-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 6px; }
+#pate-map.picking { cursor: crosshair; outline: 3px solid var(--focus); outline-offset: -3px; }
 .route-pick { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .route-pick-btn { position: relative; min-height: 48px; min-width: 0; padding: 0; border: var(--bw) solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--text); font: inherit; font-size: 1rem; font-weight: 800; cursor: pointer; }

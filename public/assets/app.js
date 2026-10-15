@@ -19,7 +19,8 @@ async function api(action, method='GET', payload=null, retried=false){
   if(payload instanceof FormData){opts.body=payload;}
   else if(method!=='GET'){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(payload||{});}
   let response;
-  try { response=await fetch(`api.php?action=${encodeURIComponent(action)}`,opts); }
+  const [act,...query]=action.split('&'); // z. B. 'approach&ids=04' → action + weitere Parameter
+  try { response=await fetch(`api.php?action=${encodeURIComponent(act)}${query.length?'&'+query.join('&'):''}`,opts); }
   catch(e){throw new Error('Keine Verbindung zum Server. Bitte Internetverbindung prüfen.');}
   const ct=response.headers.get('content-type')||'';
   const data=ct.includes('application/json')?await response.json():null;
@@ -95,6 +96,7 @@ function routeCard(r){
   <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div>${isAdmin()?`<button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button>`:''}</div>
   <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.demo?'Übungsstrecke (Strecke von Tour '+esc(r.demoSource||'')+')':r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span>${r.demo?`<span class="chip chip-demo">DEMO · zählt nicht</span>`:''}${isMyRoute(r.id)?`<span class="chip chip-mine">${ic('user')} Deine Tour</span>`:''}${(r.paten||[]).length?`<span class="chip">Paten: ${r.paten.map(esc).join(', ')}</span>`:''}<span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
   <div class="route-actions"><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button>${mapLinks}</div>
+  ${approachHtml(r)}
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
 }
@@ -185,10 +187,10 @@ function timeSpan(e){return e.startTime?(e.endTime?`${e.startTime}–${e.endTime
 function tripNavigationHtml(ids){
  if(ids.length===1){
    const maps=routeMaps(ids[0]);
-   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a><button class="btn outline small" type="button" data-show-map-route="${esc(mapId(ids[0]))}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
+   return `<div class="start-navigation-links">${maps?`<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.google)}">${ic('navigation')} Google · Ziel</a><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="${esc(maps.apple)}">${ic('navigation')} Apple · Ziel</a>`:''}<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0])}">${ic('download')} GPX · Naviki</a>${state.me?.start?`<a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(ids[0],true)}">${ic('home')} GPX mit Zufahrt</a>`:''}<button class="btn outline small" type="button" data-show-map-route="${esc(mapId(ids[0]))}">${ic('map')} Auf der Karte</button></div>${maps?'<p class="smallnote">Google/Apple berechnen eine eigene Route zum Wendepunkt, nicht die Original-KML-Strecke.</p>':''}`;
  }
  const check=comboCheck(ids);
- return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" target="_blank" rel="noopener" href="${comboDownloadUrl(ids)}">${ic('download')} Kombinierte GPX für Naviki</a>`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
+ return `<div class="start-navigation-links">${check.ok?`<a class="btn outline small" target="_blank" rel="noopener" href="${comboDownloadUrl(ids)}">${ic('download')} Kombinierte GPX für Naviki</a>${state.me?.start?`<a class="btn outline small" target="_blank" rel="noopener" href="${comboDownloadUrl(ids,true)}">${ic('home')} Kombiniert mit Zufahrt</a>`:''}`:'<span class="smallnote">GPX-Kombination nur möglich, wenn die Strecken ohne erfundene Übergänge zusammenpassen.</span>'}<button class="btn outline small" type="button" data-show-selected-map>${ic('map')} Touren auf der Karte</button></div>`;
 }
 function photoThumbs(photos,max=5){return (photos||[]).slice(0,max).map(p=>`<a href="api.php?action=photo&id=${esc(p.id)}" target="_blank" rel="noopener noreferrer"><img src="api.php?action=photo&id=${esc(p.id)}&thumb=1" loading="lazy" alt="Foto ${esc(p.name)}" width="96" height="76"></a>`).join('');}
 function openIssueCard(entry,issue){
@@ -530,6 +532,11 @@ function shareReport(){
 }
 function setupEvents(){
  $('#report-share').addEventListener('click',shareReport);
+ $('#start-gps').addEventListener('click',()=>{if(!navigator.geolocation){toast('GPS nicht verfügbar.',true);return;}
+   toast('Standort wird ermittelt …');navigator.geolocation.getCurrentPosition(p=>saveStart(p.coords.latitude,p.coords.longitude),()=>toast('Standort nicht verfügbar oder nicht freigegeben.',true),{enableHighAccuracy:true,timeout:15000,maximumAge:0});});
+ $('#start-map').addEventListener('click',()=>{$('#prefs-dialog').close();selectTab('map');setMapActions(false);state.pickStart=true;$('#pate-map').classList.add('picking');showMapStage();toast('Tippe auf der Karte auf deinen Startpunkt.');});
+ $('#start-clear').addEventListener('click',async()=>{try{const d=await api('myStart','POST',{clear:true});state.me.start=d.start;state.approaches={};renderStart();render();toast('Startpunkt entfernt.');}catch(err){toast(err.message,true);}});
+ $('#start-label').addEventListener('change',()=>{const st=state.me?.start;if(st)saveStart(st.lat,st.lon);});
  $('#auth-form').addEventListener('submit',async e=>{
    e.preventDefault();const box=$('#auth-error');box.hidden=true;
    try{
@@ -539,7 +546,7 @@ function setupEvents(){
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
- $('#settings-button').addEventListener('click',()=>{applyAppearance();applyRole();$('#prefs-dialog').showModal();});
+ $('#settings-button').addEventListener('click',()=>{applyAppearance();applyRole();renderStart();$('#prefs-dialog').showModal();});
  // Benutzerverwaltung (Admin)
  $('#user-add').addEventListener('click',()=>openUser());
  $('#user-list').addEventListener('click',e=>{const b=e.target.closest('[data-user-edit]');if(b)openUser(Number(b.dataset.userEdit));});
@@ -584,6 +591,8 @@ function setupEvents(){
    const entryEdit=e.target.closest('[data-entry-edit]');if(entryEdit)openEntry('01',entryEdit.dataset.entryEdit);
    const del=e.target.closest('[data-entry-delete]');if(del)deleteEntry(del.dataset.entryDelete);
    const rep=e.target.closest('[data-report]');if(rep)openReport(rep.dataset.report);
+   const appr=e.target.closest('[data-approach]');if(appr)loadApproach(appr.dataset.approach);
+   if(e.target.closest('[data-open-start]')){applyAppearance();applyRole();renderStart();$('#prefs-dialog').showModal();setTimeout(()=>$('#start-section').scrollIntoView({block:'start'}),60);}
    const start=e.target.closest('[data-tour-start]');if(start)startTour([start.dataset.tourStart]);
    const toggle=e.target.closest('[data-issue-toggle]');if(toggle){const [entryId,issueId]=toggle.dataset.issueToggle.split(':');changeIssueStatus(entryId,issueId,toggle.dataset.targetStatus);}
    const osmAll=e.target.closest('[data-show-selected-map]');if(osmAll){
@@ -655,8 +664,38 @@ function gpxUrl(query){
  if(iosStandalone()&&state.gpxToken)return dlPageBase()+'?'+query+'&dl='+encodeURIComponent(state.gpxToken);
  return 'api.php?action=gpx&'+query;
 }
-function mapDownloadUrl(id){return gpxUrl('id='+encodeURIComponent(id));}
-function comboDownloadUrl(ids){return gpxUrl('ids='+ids.map(encodeURIComponent).join(','));}
+function mapDownloadUrl(id,approach=false){return gpxUrl('id='+encodeURIComponent(id)+(approach?'&approach=1':''));}
+function comboDownloadUrl(ids,approach=false){return gpxUrl('ids='+ids.map(encodeURIComponent).join(',')+(approach?'&approach=1':''));}
+// ── Startpunkt des Paten und Zufahrt (Radroute Startpunkt → Tour-Anfang, Tour-Ende → zurück) ──
+const fmtKm=v=>Number(v).toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1});
+function renderStart(){
+ const st=state.me?.start;
+ $('#start-info').textContent=st?`${st.label?st.label+' · ':''}${st.lat.toFixed(5).replace('.',',')} / ${st.lon.toFixed(5).replace('.',',')}`:'Noch nicht festgelegt.';
+ if(document.activeElement!==$('#start-label'))$('#start-label').value=st?.label||'';
+ $('#start-clear').hidden=!st;
+}
+async function saveStart(lat,lon){
+ try{const d=await api('myStart','POST',{lat,lon,label:$('#start-label').value});state.me.start=d.start;state.approaches={};renderStart();render();
+   toast('Startpunkt gespeichert – Zufahrten werden neu berechnet.');}catch(err){toast(err.message,true);}
+}
+async function loadApproach(id){
+ const key=id;state.approaches=state.approaches||{};
+ state.approaches[key]={loading:true};render();
+ try{const d=await api('approach&ids='+encodeURIComponent(id));state.approaches[key]=d.approach;}
+ catch(err){state.approaches[key]={error:err.message};toast(err.message,true);}
+ render();
+}
+function approachHtml(r){
+ if(!state.me?.start)return `<p class="approach-note">${ic('home')} <button type="button" class="link-btn" data-open-start>Startpunkt festlegen</button> – dann rechnet die App deine Zufahrt zur Tour.</p>`;
+ const a=state.approaches?.[r.id];
+ if(!routeLines(r.id).length)return '';
+ if(!a)return `<p class="approach-note">${ic('home')} Zufahrt ab ${esc(state.me.start.label||'deinem Startpunkt')} <button type="button" class="btn outline small" data-approach="${esc(r.id)}">Berechnen</button></p>`;
+ if(a.loading)return `<p class="approach-note">${ic('home')} Zufahrt wird berechnet …</p>`;
+ if(a.error)return `<p class="approach-note">${ic('alert-triangle')} ${esc(a.error)} <button type="button" class="link-btn" data-approach="${esc(r.id)}">Nochmal</button></p>`;
+ const total=a.to.km+a.back.km+(routeLineKm(r.id)||0);
+ return `<div class="approach-box"><p>${ic('home')} <b>Ab ${esc(state.me.start.label||'Startpunkt')}:</b> Zufahrt ${fmtKm(a.to.km)} km · Rückweg ${fmtKm(a.back.km)} km · gesamt ca. ${fmtKm(total)} km</p>
+  <div class="approach-actions"><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id,true)}">${ic('download')} GPX mit Zufahrt</a><button class="btn outline small" type="button" data-map-choose="${mapId(r.id)}">${ic('map')} Auf der Karte</button></div></div>`;
+}
 function startCoordinate(id){let lines=routeLines(id);return lines[0]?.[0]||null;}
 function endCoordinate(id){let lines=routeLines(id);return lines[lines.length-1]?.at(-1)||null;}
 // Das Ende jeder Hin-und-Rueck-KML ist der START und darf NIE als Gemeindegrenze dienen.
@@ -697,6 +736,10 @@ function initMap(){
  if(!window.L){$('#map-placeholder').hidden=false;$('#map-placeholder').textContent='Kartenbibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.';return;}
  state.leafletMap=L.map('pate-map',{scrollWheelZoom:false,zoomControl:false}).setView(DEFAULT_CENTER,12);
  L.control.zoom({position:'bottomleft'}).addTo(state.leafletMap); // oben liegt die Auswahl-Leiste
+ state.leafletMap.on('click',ev=>{
+   if(!state.pickStart)return;state.pickStart=false;$('#pate-map').classList.remove('picking');
+   if(confirm(`Startpunkt hier setzen?\n${ev.latlng.lat.toFixed(5)}, ${ev.latlng.lng.toFixed(5)}`))saveStart(ev.latlng.lat,ev.latlng.lng);
+ });
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',maxZoom:19}).addTo(state.leafletMap);
 }
 function redrawMap(){
@@ -716,9 +759,14 @@ function redrawMap(){
    const turn=routeTurnpoint(route.id);
    if(turn)L.circleMarker([turn[1],turn[0]],{radius:7,color:MAP_COLORS[route.id],weight:3,fillColor:'#fff',fillOpacity:1})
      .bindPopup('KML-Wendepunkt · '+esc(route.id)+' · '+esc(route.name)).addTo(group);
+   // Berechnete Zufahrt gestrichelt (gehört zur Tour, nicht zur Kontrollstrecke).
+   const ap=state.approaches?.[route.id];
+   if(ap?.to?.line)for(const seg of [ap.to.line,ap.back.line])L.polyline(seg.map(([lon,lat])=>[lat,lon]),{color:MAP_COLORS[route.id],weight:4,opacity:.8,dashArray:'6 8'}).bindTooltip('Zufahrt/Rückweg · '+esc(route.name)).addTo(group);
    state.layerGroups[route.id]=group;
    if(state.visibleRoutes.has(route.id))group.addTo(state.leafletMap);
  }
+ const st=state.me?.start;
+ if(st){const g=L.featureGroup();L.circleMarker([st.lat,st.lon],{radius:8,color:'#14654a',weight:3,fillColor:'#fff',fillOpacity:1}).bindTooltip('Dein Startpunkt'+(st.label?' · '+esc(st.label):'')).addTo(g);g.addTo(state.leafletMap);state.layerGroups._start=g;}
  $('#map-placeholder').hidden=valid>0 && !!state.leafletMap;
  $('#map-placeholder').textContent=state.leafletMap?(valid>0?'':'Noch keine zugeordneten Linien. KML importieren und die Ebenen zuordnen.'):'Kartenbibliothek ist nicht verfügbar. Bitte Internetverbindung prüfen.';
  $('#map-count').textContent=`${[...state.visibleRoutes].filter(id=>routeLines(id).length).length} / ${valid} sichtbar`;

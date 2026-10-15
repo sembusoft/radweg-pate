@@ -72,6 +72,7 @@ jobs:
           DB_NAME=radwegpate_ci
           DB_USER=root
           DB_PASSWORD=ci-root
+          ROUTING_PROVIDER=straight
           EOF
           php public/db/check.php
           php public/db/migrate.php
@@ -83,6 +84,9 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:8080
         run: node scripts/smoke-test.mjs
+
+      - name: Routenplaner-Antworten (openrouteservice, BRouter) auswerten
+        run: php scripts/routing-test.php
 
       - name: Übernahme der JSON-Altdaten in eine leere Datenbank
         env:

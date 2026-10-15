@@ -83,6 +83,10 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
     wählt in Einstellungen), nicht mit echten Touren mischbar, zählt nicht bei KPIs/offenen Mängeln, Bericht
     mit „DEMO“. Demo-Fahrten löschen sich nach 7 Tagen (beim Login), Admin: „Alle Demo-Daten löschen“.
     In der App liegt sie in `state.demo`, nicht in `state.routes` (echte Touren); `routeById()` findet beide.
+  - Startpunkt je Pate + Zufahrt (ab 3.14.0, Migration 005, `lib/routing.php`): Radroute Startpunkt →
+    Tour-Anfang und Tour-Ende → Startpunkt über openrouteservice (`ORS_API_KEY`) oder BRouter; die
+    KML-Linien bleiben unverändert. Ergebnis in `radpate_approaches`, neu nur bei geändertem Startpunkt,
+    Tour-Anfang/-Ende oder Anbieter. GPX mit `approach=1` = eine durchgehende Spur. Tests: `ROUTING_PROVIDER=straight`.
   - Touren ↔ Paten (`radpate_user_routes`, ab 3.11.0): Admin ordnet im Benutzer-Dialog zu, eine Tour
     kann mehrere Paten haben. Wirkung nur in der Oberfläche: eigene Touren vorn und vorausgewählt
     (Touren-Knöpfe, Karte, „Fahrt beginnen“), andere bleiben erreichbar.

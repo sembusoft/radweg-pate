@@ -178,6 +178,14 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
               <p class="smallnote">Gilt für dieses Gerät. „Automatisch“ folgt der Einstellung des Handys.</p>
             </section>
     <div class="rule"></div>
+    <section class="prefs-section" id="start-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#home"/></svg> Mein Startpunkt</h3>
+      <p class="smallnote">Von hier aus berechnet die App deine Zufahrt zu jeder Tour und zurück (Radroute). Die Tour-Strecken selbst bleiben unverändert. Nur du siehst deinen Startpunkt; zum Berechnen geht er an den Routenplaner.</p>
+      <p id="start-info" class="start-info">Noch nicht festgelegt.</p>
+      <label>Bezeichnung (optional)<input id="start-label" maxlength="120" placeholder="z. B. Zuhause" autocomplete="off"></label>
+      <div class="start-actions"><button type="button" class="btn outline small" id="start-gps"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#current-location"/></svg> Aktueller Standort</button><button type="button" class="btn outline small" id="start-map"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#map-pin"/></svg> Auf der Karte wählen</button></div>
+      <button type="button" class="link-btn" id="start-clear" hidden>Startpunkt entfernen</button>
+    </section>
+    <div class="rule"></div>
     <section class="prefs-section" id="password-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</h3>
       <p class="message warn" id="pw-required" hidden>Du bist mit einem Startpasswort angemeldet. Bitte lege jetzt dein eigenes Passwort fest – vorher kannst du nichts speichern.</p>
       <form id="password-form"><input type="text" name="username" id="password-username" autocomplete="username" hidden readonly tabindex="-1" aria-hidden="true"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
