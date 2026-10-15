@@ -244,7 +244,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
     <label>Hinweis / Stand der Route<textarea id="route-note" rows="3" maxlength="1000"></textarea></label>
     <div class="dialog-actions"><button type="button" class="btn subtle" data-close>Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>
   </form></dialog>
-  <div role="status" id="toast" class="toast" aria-live="polite" hidden></div>
+  <div role="status" id="toast" class="toast" aria-live="polite" popover="manual" hidden></div>
   <script src="assets/vendor/leaflet-1.9.4/leaflet.js" defer></script>
   <script src="assets/app.js?v=<?= $v ?>" defer></script>
 </body>

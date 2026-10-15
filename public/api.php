@@ -128,14 +128,14 @@ function valid_date(string $date): bool {
     $dt=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
     return $dt && $dt->format('Y-m-d')===$date;
 }
-/** Höchstens 10 Anmeldeversuche je IP in 15 Minuten. */
+/** Sperre nach 10 FEHLversuchen je IP in 15 Minuten (erfolgreiche Anmeldungen zählen nicht). */
+function login_ip_hash(): string { return hash('sha256',(string)($_SERVER['REMOTE_ADDR']??'unknown')); }
 function check_login_rate(): void {
-    $ip=hash('sha256',(string)($_SERVER['REMOTE_ADDR']??'unknown'));
     if (random_int(1,20)===1) dbq('DELETE FROM radpate_login_attempts WHERE attempted_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
-    $n=(int)db_val('SELECT COUNT(*) FROM radpate_login_attempts WHERE ip_hash=? AND attempted_at > UTC_TIMESTAMP() - INTERVAL 15 MINUTE',[$ip]);
-    if ($n>=10) fail('Zu viele Anmeldeversuche. In 15 Minuten erneut versuchen.',429);
-    dbq('INSERT INTO radpate_login_attempts (ip_hash, attempted_at) VALUES (?, UTC_TIMESTAMP())',[$ip]);
+    $n=(int)db_val('SELECT COUNT(*) FROM radpate_login_attempts WHERE ip_hash=? AND attempted_at > UTC_TIMESTAMP() - INTERVAL 15 MINUTE',[login_ip_hash()]);
+    if ($n>=10) fail('Zu viele Fehlversuche. In 15 Minuten erneut versuchen.',429);
 }
+function login_failed(): void { dbq('INSERT INTO radpate_login_attempts (ip_hash, attempted_at) VALUES (?, UTC_TIMESTAMP())',[login_ip_hash()]); }
 
 // ── Lesemodell: Datenbankzeilen → JSON-Form der App (unverändert gegenüber den JSON-Dateien) ──
 const ROUTE_IDS=['01','02','03','04','05','06','07'];
@@ -265,7 +265,7 @@ if ($action==='setup' && $method==='POST') {
     if (strlen($token)<20 || str_starts_with($token,'HIER-')) fail('Einrichtung gesperrt: INSTALL_TOKEN in der .env setzen (mindestens 20 Zeichen).',503);
     check_login_rate();
     $data=post_json();
-    if (!hash_equals($token, (string)($data['code']??''))) fail('Einrichtungscode stimmt nicht.',403);
+    if (!hash_equals($token, (string)($data['code']??''))) { login_failed(); fail('Einrichtungscode stimmt nicht.',403); }
     $name=valid_user_name($data['name']??'');
     $pw=valid_new_password($data['password']??'');
     // Erster Benutzer = Admin. Sperre über die Tabelle: kommen zwei Einrichtungen gleichzeitig, gewinnt eine.
@@ -276,7 +276,7 @@ if ($action==='setup' && $method==='POST') {
         return db_row('SELECT * FROM radpate_users WHERE id=?',[(int)db()->lastInsertId()]);
     });
     start_session_for_user($user);
-    result(['ok'=>true]);
+    result(['ok'=>true,'csrf'=>$_SESSION['csrf']]);
 }
 if ($action==='login' && $method==='POST') {
     check_csrf();
@@ -287,6 +287,7 @@ if ($action==='login' && $method==='POST') {
     // Gleiche Meldung für unbekannten Namen und falsches Passwort.
     if (!$user || !password_verify($pw,(string)$user['password_hash'])) {
         if (!$user) password_verify($pw,'$2y$10$abcdefghijklmnopqrstuuJ8kq3Vt6x0VZ8l9QeXyYB6r8m0Ff0nO'); // gleiche Laufzeit
+        login_failed();
         fail('Name oder Passwort ist nicht korrekt.',401);
     }
     if (password_needs_rehash((string)$user['password_hash'],PASSWORD_DEFAULT)) dbq('UPDATE radpate_users SET password_hash=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),$user['id']]);
@@ -294,13 +295,15 @@ if ($action==='login' && $method==='POST') {
     // Fahrten, die noch niemandem gehören (z. B. von 3.9.0 im Deploy-Fenster angelegt), dem ersten Admin geben.
     dbq("UPDATE radpate_entries SET user_id=(SELECT MIN(id) FROM radpate_users WHERE role='admin') WHERE user_id IS NULL");
     start_session_for_user($user);
-    result(['ok'=>true]);
+    result(['ok'=>true,'csrf'=>$_SESSION['csrf']]);
 }
 if ($action==='logout' && $method==='POST') {
     check_csrf();
-    $_SESSION=[];
+    // Neue Sitzung mit neuem CSRF-Schlüssel – die App übernimmt ihn aus der Antwort und kann sich
+    // ohne Neuladen gleich wieder (auch als jemand anderes) anmelden.
+    $_SESSION=['csrf'=>bin2hex(random_bytes(24))];
     session_regenerate_id(true);
-    result(['ok'=>true]);
+    result(['ok'=>true,'csrf'=>$_SESSION['csrf']]);
 }
 // GPX-Schlüssel: Die Homescreen-App auf dem iPhone öffnet GPX über dl.<host>/gpx.php in einem eigenen
 // Fenster. Dieses teilt die Cookies der App nicht – deshalb trägt der Link einen zeitlich begrenzten

@@ -260,6 +260,16 @@ async function main() {
   r = await a.api('deleteEntry', { method: 'POST', json: { id: paulTrip } });
   check(r.data?.ok, 'Admin löscht Fahrt des Paten');
 
+  // Abmelden und ohne Neuladen gleich wieder anmelden: neuer CSRF-Schlüssel kommt mit der Antwort
+  const c = new Client(); await c.status();
+  r = await c.api('login', { method: 'POST', json: { name: 'Siglinde', password: PASSWORD } });
+  check(r.data?.ok, 'Login (für Abmelde-Test)', r.data?.error);
+  r = await c.api('logout', { method: 'POST' });
+  check(r.data?.ok && typeof r.data.csrf === 'string', 'Abmelden liefert neuen CSRF-Schlüssel');
+  c.csrf = r.data?.csrf;
+  r = await c.api('login', { method: 'POST', json: { name: 'Siglinde', password: PASSWORD } });
+  check(r.data?.ok, 'direkt danach wieder anmelden (ohne Neuladen)', r.data?.error);
+
   // Passwortwechsel meldet andere Sitzungen ab
   const b = new Client(); await b.status();
   r = await b.api('login', { method: 'POST', json: { name: 'Siglinde', password: 'falsch-falsch-falsch' } });
@@ -298,6 +308,14 @@ async function main() {
 
   r = await a.api('logout', { method: 'POST' });
   check(r.data?.ok, 'Abmelden');
+
+  // Sperre zählt nur Fehlversuche (ganz am Ende: sperrt diese IP danach 15 Minuten)
+  const z = new Client(); await z.status();
+  let codes = [];
+  for (let i = 0; i < 11; i++) { r = await z.api('login', { method: 'POST', json: { name: 'Siglinde', password: 'falsch-falsch-' + i } }); codes.push(r.res.status); }
+  // Vorher gab es 4 Fehlversuche (falscher Code, falsches Passwort, unbekannter Name, deaktivierter Pate) und
+  // rund ein Dutzend erfolgreiche Anmeldungen: gesperrt wird genau beim 11. Fehlversuch.
+  check(codes.indexOf(429) === 6 && codes.slice(0, 6).every(c => c === 401), 'Sperre nach 10 Fehlversuchen (429), erfolgreiche Anmeldungen zählen nicht', codes.join(','));
 
   console.log(`\n${passed} ok, ${failures} fehlgeschlagen`);
   process.exit(failures ? 1 : 0);

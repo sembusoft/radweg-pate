@@ -10,8 +10,11 @@ const ic=n=>`<svg class="ic" aria-hidden="true"><use href="assets/icons.svg#${n}
 function esc(x=''){return String(x??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function textDate(iso){if(!iso) return '';const [y,m,d]=iso.split('-');return `${d}.${m}.${y}`;}
 function todayLocal(){const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;}
-function toast(message,err=false){const el=$('#toast');el.textContent=message;el.classList.toggle('toast-error',!!err);el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,4200);}
-async function api(action, method='GET', payload=null){
+// Meldung. Als Popover in der obersten Ebene – sonst läge sie bei offenem Dialog unsichtbar dahinter.
+function toast(message,err=false){const el=$('#toast');el.textContent=message;el.classList.toggle('toast-error',!!err);
+ if(el.showPopover){try{if(el.matches(':popover-open'))el.hidePopover();el.hidden=false;el.showPopover();}catch(e){el.hidden=false;}}else el.hidden=false;
+ clearTimeout(toast.timer);toast.timer=setTimeout(()=>{try{el.hidePopover?.();}catch(e){}el.hidden=true;},err?6000:4200);}
+async function api(action, method='GET', payload=null, retried=false){
   const opts={method,credentials:'same-origin',headers:{'X-CSRF-Token':state.csrf}};
   if(payload instanceof FormData){opts.body=payload;}
   else if(method!=='GET'){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(payload||{});}
@@ -20,6 +23,11 @@ async function api(action, method='GET', payload=null){
   catch(e){throw new Error('Keine Verbindung zum Server. Bitte Internetverbindung prüfen.');}
   const ct=response.headers.get('content-type')||'';
   const data=ct.includes('application/json')?await response.json():null;
+  if(data?.csrf)state.csrf=data.csrf;
+  // Veralteter CSRF-Schlüssel (z. B. nach Abmelden in einem anderen Tab): neuen holen, einmal wiederholen.
+  if(response.status===403 && !retried && /^Sicherheitsprüfung/.test(data?.error||'')){
+    try{const st=await fetch('api.php?action=status',{credentials:'same-origin'}).then(r=>r.json());if(st?.csrf){state.csrf=st.csrf;return api(action,method,payload,true);}}catch(e){}
+  }
   if(!response.ok || !data?.ok){ if(response.status===401){state.loggedIn=false;showAuth(true);} throw new Error(data?.error||'Serverfehler: '+response.status); }
   return data;
 }
