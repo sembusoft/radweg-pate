@@ -38,6 +38,7 @@ const KINDS = ['Belag', 'Beschilderung', 'Hindernis', 'Sicherheit', 'Verschmutzu
 const STATES = ['offen', 'gemeldet', 'bearbeitung', 'erledigt'];
 
 echo "Datenordner: $dir\nDatenbank:   " . APP_DB_NAME . "\n";
+if (!db_val("SHOW TABLES LIKE 'radpate\\_settings'")) { echo "Tabellen fehlen – zuerst php db/migrate.php ausführen.\n"; exit(1); }
 if (setting('json_imported_at') !== null) { echo 'Bereits übernommen am ' . setting('json_imported_at') . " – nichts zu tun.\n"; exit(0); }
 $hasPw = setting('password_hash') !== null;
 $hasEntries = (int)db_val('SELECT COUNT(*) FROM radpate_entries') > 0;

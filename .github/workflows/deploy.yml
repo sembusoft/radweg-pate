@@ -191,6 +191,10 @@ jobs:
           ERG=$(ssh deploy "cd '$REMOTE' && $PHPBIN db/check.php" 2>&1) && RC=0 || RC=$?
           echo "$ERG"
           { echo "### Datenbank-Zugang"; echo '```'; echo "$ERG"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $RC -eq 127 ] || echo "$ERG" | grep -q 'command not found'; then
+            echo "::error::'$PHPBIN' gibt es auf dem Server nicht – Variable PHP_BIN im Environment production korrigieren (klein, z. B. php) oder löschen."
+            exit 1
+          fi
           if [ $RC -ne 0 ]; then
             echo "::error::Datenbank nicht nutzbar – DB_* in der .env auf dem Server prüfen (docs/DEPLOY.md, Abschnitt Datenbank)."
             [ "${{ inputs.dry_run }}" = "true" ] || exit 1
