@@ -485,6 +485,7 @@ body:has(#trip-view:not([hidden])) .toast { bottom: calc(var(--nav-h) + 84px + e
 
 /* ---------- 8. Tagebuch ---------- */
 .filter-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 14px; }
+.filter-bar .filter-user { grid-column: 1 / -1; }
 .diary-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .entry-card { padding: 16px; }
 .entry-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }

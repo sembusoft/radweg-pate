@@ -136,8 +136,18 @@ function render(){
  if(state.tab==='trip')renderTrip();
  updateTripBanner();
 }
+// Admin: Tagebuch nach Pate filtern (Namen aus den vorhandenen Fahrten, eigener Name zuerst).
+function renderUserFilter(){
+ const sel=$('#filter-user'),admin=isAdmin();sel.hidden=!admin;if(!admin){sel.value='';return;}
+ const names=new Map();for(const e of state.entries)if(e.userId!=null)names.set(String(e.userId),e.userName||'?');
+ const prev=sel.value,me=String(state.me?.id??'');
+ const opts=[...names].sort((a,b)=>(b[0]===me)-(a[0]===me)||a[1].localeCompare(b[1],'de'));
+ sel.innerHTML='<option value="">Alle Paten</option>'+opts.map(([id,n])=>`<option value="${esc(id)}">${esc(n)}${id===me?' (ich)':''}</option>`).join('');
+ sel.value=names.has(prev)?prev:'';
+}
 function renderDiary(){
  const tour=$('#filter-tour').value,status=$('#filter-status').value;
+ renderUserFilter();const user=isAdmin()?$('#filter-user').value:'';
  const statusMatch=e=>{const issues=entryIssues(e);
    if(status==='offen')return issues.some(isPending);
    if(status==='mangel')return issues.length>0;
@@ -145,7 +155,8 @@ function renderDiary(){
    return true;};
  // Eigene Fahrten (Admin: alle). Beim Filter auf Mängel auch fremde Fahrten – Mängel sehen alle.
  const withIssues=status==='offen'||status==='mangel';
- const matches=state.entries.filter(e=>(isMine(e)||(withIssues&&entryIssues(e).length))&&(!tour||entryRoutes(e).includes(tour))&&statusMatch(e));
+ const matches=state.entries.filter(e=>(isMine(e)||(withIssues&&entryIssues(e).length))&&(!tour||entryRoutes(e).includes(tour))&&statusMatch(e)&&(!user||String(e.userId??'')===user));
+ state.diaryMatches=matches;
  const routes=new Map([...state.routes,...(state.demo?[state.demo]:[])].map(r=>[r.id,r]));
  $('#diary-list').innerHTML=matches.length?matches.map(e=>{
    const ids=entryRoutes(e),issues=entryIssues(e),pendingCount=issues.filter(isPending).length;
@@ -409,9 +420,10 @@ async function saveRoute(event){event.preventDefault();const id=$('#route-id').v
  catch(err){toast(err.message,true);}
 }
 function exportCsv(){
- const cols=['Prüfung-ID','Kontrollierte Touren','Datum','Start','Ende','Fahrtnotiz','Fahrt-GPS Breitengrad','Fahrt-GPS Längengrad','Allgemeine Fotos','Mangel-ID','Mangel-Uhrzeit','Mangel-Tour','Mangelart','Mangelort','Mangelbeschreibung','Bearbeitungsstatus','Mangel-GPS Breitengrad','Mangel-GPS Längengrad','Mängelfotos','Erledigt am'];
+ const cols=['Prüfung-ID','Pate','Kontrollierte Touren','Datum','Start','Ende','Fahrtnotiz','Fahrt-GPS Breitengrad','Fahrt-GPS Längengrad','Allgemeine Fotos','Mangel-ID','Mangel-Uhrzeit','Mangel-Tour','Mangelart','Mangelort','Mangelbeschreibung','Bearbeitungsstatus','Mangel-GPS Breitengrad','Mangel-GPS Längengrad','Mängelfotos','Erledigt am'];
  const rows=[];
- for(const e of state.entries){const prefix=[e.id,entryRoutes(e).join(', '),e.date,e.startTime||'',e.endTime||'',e.notes||'',e.coords?.lat??'',e.coords?.lon??'',(e.photos||[]).length];
+ // Exportiert genau das, was das Tagebuch gerade zeigt (Filter Tour/Zustand/Pate), nur eigene bzw. als Admin alle Fahrten.
+ for(const e of (state.diaryMatches||myEntries()).filter(isMine)){const prefix=[e.id,e.userName||'',entryRoutes(e).join(', '),e.date,e.startTime||'',e.endTime||'',e.notes||'',e.coords?.lat??'',e.coords?.lon??'',(e.photos||[]).length];
   const issues=entryIssues(e);
   if(!issues.length)rows.push([...prefix,'','','','','','','','','',0,'']);
   for(const i of issues)rows.push([...prefix,i.id,i.time||'',i.tourId,i.kind,i.place,i.description,i.status,i.coords?.lat??'',i.coords?.lon??'',(i.photos||[]).length,i.completedAt||'']);
@@ -595,7 +607,7 @@ function setupEvents(){
  $('#demo-reset').addEventListener('click',async()=>{if(!confirm('Alle Demo-Fahrten samt Mängeln und Fotos löschen?'))return;try{const d=await api('demoReset','POST',{});await refresh();toast(d.deleted?`${d.deleted} Demo-${d.deleted===1?'Fahrt':'Fahrten'} gelöscht.`:'Keine Demo-Daten vorhanden.');}catch(err){toast(err.message,true);}});
  $('#route-demo').addEventListener('click',()=>{if(!state.demo)return;state.routePick=state.demo.id;storePref('radwegpate-route',state.demo.id);renderRoutePick();});
  $('#route-pick').addEventListener('click',e=>{const b=e.target.closest('[data-route-pick]');if(!b)return;state.routePick=b.dataset.routePick;storePref('radwegpate-route',state.routePick);renderRoutePick();});
- $('#filter-tour').addEventListener('change',renderDiary);$('#filter-status').addEventListener('change',renderDiary);
+ $('#filter-tour').addEventListener('change',renderDiary);$('#filter-user').addEventListener('change',renderDiary);$('#filter-status').addEventListener('change',renderDiary);
  $('#entry-form').addEventListener('submit',saveEntry);$('#route-form').addEventListener('submit',saveRoute);
  $('#get-position').addEventListener('click',()=>{
    if(!('geolocation'in navigator)){toast('GPS nicht verfügbar.',true);return;}
