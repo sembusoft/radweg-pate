@@ -75,6 +75,7 @@ function applyRole(){
  for(const el of $$('[data-admin-only]'))el.hidden=!admin;
  for(const el of $$('[data-pate-only]'))el.hidden=admin;
  $('#settings-sub').textContent=admin?'Benutzer, Touren und KML-Ebenen, Import und Datensicherung.':'Hinweise zur App.';
+ $('#password-username').value=state.me?.name||''; // für Passwort-Manager: neues Passwort gehört zu diesem Namen
  $('#whoami').textContent=state.me?`Angemeldet als ${state.me.name} · ${admin?'Admin':'Pate'}`:'';
  $('#pw-required').hidden=!state.me?.mustChangePassword;
 }

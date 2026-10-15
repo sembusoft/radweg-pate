@@ -176,7 +176,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
     <div class="rule"></div>
     <section class="prefs-section" id="password-section"><h3 class="prefs-title"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</h3>
       <p class="message warn" id="pw-required" hidden>Du bist mit einem Startpasswort angemeldet. Bitte lege jetzt dein eigenes Passwort fest – vorher kannst du nichts speichern.</p>
-      <form id="password-form"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
+      <form id="password-form"><input type="text" name="username" id="password-username" autocomplete="username" hidden readonly tabindex="-1" aria-hidden="true"><label>Bisheriges Passwort<input type="password" name="old" required autocomplete="current-password"></label><label>Neues Passwort (mindestens 12 Zeichen)<input type="password" name="new" minlength="12" required autocomplete="new-password"></label><button type="submit" class="btn outline full"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#lock"/></svg> Passwort ändern</button></form>
     </section>
     <div class="rule"></div>
     <p class="smallnote" id="whoami"></p>
