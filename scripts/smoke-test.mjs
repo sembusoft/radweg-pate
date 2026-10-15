@@ -204,9 +204,12 @@ async function main() {
 
   // ── Mehrere Benutzer: Pate legt eigene Fahrt an, sieht fremde Mängel, nicht fremde Fahrten ──
   const PATE_START = 'Startpasswort-Paul-1', PATE_PW = 'Eigenes-Passwort-Paul-1';
-  r = await a.api('userSave', { method: 'POST', json: { name: 'Paul', role: 'pate', password: PATE_START } });
+  r = await a.api('userSave', { method: 'POST', json: { name: 'Paul', role: 'pate', password: PATE_START, routeIds: ['02', '05'] } });
   check(r.data?.ok && r.data.user?.mustChangePassword === true, 'Admin legt Paten an (Startpasswort)', r.data?.error);
   const paulId = r.data?.user?.id;
+  check(JSON.stringify(r.data?.user?.routeIds) === '["02","05"]', 'Pate mit Touren 02 und 05', JSON.stringify(r.data?.user?.routeIds));
+  r = await a.api('userSave', { method: 'POST', json: { name: 'X', role: 'pate', password: PATE_START, routeIds: ['09'] } });
+  check(r.res.status === 400, 'ungültige Tour abgelehnt');
   r = await a.api('userSave', { method: 'POST', json: { name: 'paul', role: 'pate', password: PATE_START } });
   check(r.res.status === 400, 'doppelter Name abgelehnt');
   const adminId = (await a.api('bootstrap')).data?.me?.id;
@@ -226,6 +229,7 @@ async function main() {
   r = await p.api('bootstrap');
   const foreign = r.data?.entries?.find(e => e.id === entryId);
   check(r.data?.me?.mustChangePassword === false, 'Passwortpflicht erledigt');
+  check(JSON.stringify(r.data?.me?.routeIds) === '["02","05"]' && r.data?.routes?.find(x => x.id === '05')?.paten?.includes('Paul'), 'Pate kennt seine Touren, Tour 05 nennt Paul als Paten');
   check(foreign && foreign.own === false && foreign.canEdit === false && foreign.notes === '' && foreign.startTime === null && foreign.userName === 'Siglinde',
     'fremde Fahrt nur als Hülle (ohne Notiz/Zeiten)', JSON.stringify(foreign && { own: foreign.own, notes: foreign.notes }));
   check(foreign?.issues?.length === 1 && foreign.issues[0].photos.length === 1, 'fremde Mängel samt Fotos sichtbar');
@@ -253,7 +257,7 @@ async function main() {
   r = await a.api('users');
   check(r.data?.users?.some(u => u.name === 'Paul' && u.entries === 1), 'Benutzerliste mit Fahrtenzahl');
   r = await a.api('userSave', { method: 'POST', json: { id: paulId, name: 'Paul', role: 'pate', active: false } });
-  check(r.data?.ok && r.data.user.active === false, 'Admin deaktiviert Paten');
+  check(r.data?.ok && r.data.user.active === false, 'Admin deaktiviert Paten', r.data?.error);
   r = await p.api('bootstrap'); check(r.res.status === 401, 'Sitzung des deaktivierten Paten beendet');
   r = await p.api('login', { method: 'POST', json: { name: 'Paul', password: PATE_PW } });
   check(r.res.status === 401, 'deaktivierter Pate kann sich nicht anmelden');

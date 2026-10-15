@@ -90,7 +90,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
           </aside>
         </section>
         <section id="routes-view" class="view">
-          <div class="section-heading"><div><h2>Deine Touren</h2><p class="muted">Tour auswählen – Details und Aktionen erscheinen darunter.</p></div></div>
+          <div class="section-heading"><div><h2>Deine Touren</h2></div></div>
           <div class="route-pick" id="route-pick" role="tablist" aria-label="Tour wählen"></div>
           <div id="route-list" class="route-grid"></div>
         </section>
@@ -189,6 +189,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
     <label>Name (zum Anmelden)<input id="user-name" maxlength="60" autocomplete="off" required></label>
     <label>Rolle<select id="user-role"><option value="pate">Pate – eigene Fahrten, Mängel aller</option><option value="admin">Admin – zusätzlich Benutzer, Touren, KML, Sicherung</option></select></label>
     <label class="check-row"><input type="checkbox" id="user-active" checked> <span>Zugang aktiv</span></label>
+    <div class="entry-routes-wrapper"><span class="form-label">Touren dieses Paten</span><p class="smallnote">Stehen bei ihm vorn und sind vorausgewählt; andere Touren kann er trotzdem fahren. Eine Tour kann mehrere Paten haben.</p><div id="user-routes" class="entry-route-options" role="group" aria-label="Touren dieses Paten"></div></div>
     <label><span id="user-pw-label">Startpasswort (mindestens 12 Zeichen)</span><input id="user-password" type="text" minlength="12" maxlength="256" autocomplete="off" spellcheck="false"></label>
     <div class="dialog-inline"><button type="button" class="btn outline small" id="user-pw-suggest"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#refresh"/></svg> Passwort vorschlagen</button></div>
     <p class="smallnote" id="user-pw-hint">Das Startpasswort gibst du der Person weiter; sie muss es beim ersten Anmelden ändern.</p>

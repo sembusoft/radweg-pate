@@ -109,10 +109,15 @@ function valid_new_password(mixed $raw): string {
     if (strlen($pw)<12 || strlen($pw)>256) fail('Passwort: 12 bis 256 Zeichen.');
     return $pw;
 }
+/** Touren eines Benutzers (Paten-Zuordnung). */
+function user_route_ids(int $uid): array {
+    return array_column(db_all('SELECT route_id FROM radpate_user_routes WHERE user_id=? ORDER BY route_id',[$uid]),'route_id');
+}
 function user_out(array $u): array {
     return ['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'active'=>(bool)(int)$u['active'],
         'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'lastLoginAt'=>db_iso($u['last_login_at']??null),
-        'entries'=>isset($u['entries'])?(int)$u['entries']:null];
+        'entries'=>isset($u['entries'])?(int)$u['entries']:null,
+        'routeIds'=>user_route_ids((int)$u['id'])];
 }
 function valid_url(string $url): bool {
     if ($url==='') return true;
@@ -144,7 +149,11 @@ function route_out(array $r): array {
         'km'=>$r['km']===null?null:(float)$r['km'],
         'links'=>['komoot'=>$r['link_komoot'],'google'=>$r['link_google'],'apple'=>$r['link_apple'],'mymaps'=>$r['link_mymaps']]];
 }
-function routes_all(): array { return array_map('route_out', db_all('SELECT * FROM radpate_routes ORDER BY id')); }
+function routes_all(): array {
+    $paten=[];
+    foreach (db_all('SELECT ur.route_id, u.name FROM radpate_user_routes ur JOIN radpate_users u ON u.id=ur.user_id WHERE u.active=1 ORDER BY u.name') as $r) $paten[$r['route_id']][]=$r['name'];
+    return array_map(fn($r)=>route_out($r)+['paten'=>$paten[$r['id']]??[]], db_all('SELECT * FROM radpate_routes ORDER BY id'));
+}
 function coords_out(array $r): ?array { return $r['lat']===null||$r['lon']===null ? null : ['lat'=>(float)$r['lat'],'lon'=>(float)$r['lon']]; }
 function photo_out(array $p): array { return ['id'=>$p['id'],'name'=>$p['name'],'file'=>$p['file'],'mime'=>$p['mime'],'size'=>(int)$p['size']]; }
 function issue_out(array $i, array $photos): array {
@@ -343,7 +352,7 @@ function map_valid_id(string $value): bool { return preg_match('/^[a-f0-9]{16}$/
 function gpx_escape(string $s): string { return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8'); }
 if ($action==='bootstrap' && $method==='GET') {
     $u=me();
-    result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw']],
+    result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'routeIds'=>user_route_ids((int)$u['id'])],
         'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
 }
 if ($action==='route' && $method==='POST') {
@@ -666,13 +675,22 @@ if ($action==='userSave' && $method==='POST') {
     if (!in_array($role,USER_ROLES,true)) fail('Unbekannte Rolle.');
     $active=array_key_exists('active',$in)?(bool)$in['active']:true;
     $pw=(string)($in['password']??'');
-    $saved=db_tx(function () use ($id,$name,$role,$active,$pw) {
+    // Touren des Paten (optional; fehlt der Schlüssel, bleibt die Zuordnung unverändert).
+    $routeIds=null;
+    if (array_key_exists('routeIds',$in)) {
+        if (!is_array($in['routeIds'])) fail('Ungültige Tourenauswahl.');
+        $routeIds=array_values(array_unique(array_map('strval',$in['routeIds'])));
+        foreach ($routeIds as $rid) if (!in_array($rid,ROUTE_IDS,true)) fail('Ungültige Tourenauswahl.');
+    }
+    $saved=db_tx(function () use ($id,$name,$role,$active,$pw,$routeIds) {
         $dupe=db_val('SELECT id FROM radpate_users WHERE name=? AND id<>?',[$name,$id]);
         if ($dupe!==null) fail('Diesen Namen gibt es schon.');
         if ($id===0) {
             $hash=password_hash(valid_new_password($pw),PASSWORD_DEFAULT);
             dbq('INSERT INTO radpate_users (name, password_hash, role, active, must_change_pw, password_version, created_at) VALUES (?,?,?,?,1,1,?)',[$name,$hash,$role,$active?1:0,db_now()]);
-            return (int)db()->lastInsertId();
+            $newId=(int)db()->lastInsertId();
+            if ($routeIds!==null) foreach ($routeIds as $rid) dbq('INSERT INTO radpate_user_routes (user_id, route_id) VALUES (?,?)',[$newId,$rid]);
+            return $newId;
         }
         $old=db_row('SELECT * FROM radpate_users WHERE id=? FOR UPDATE',[$id]) ?? fail('Benutzer nicht gefunden.',404);
         if ($id===my_id() && ($role!=='admin' || !$active)) fail('Die eigene Admin-Rolle bzw. den eigenen Zugang kann man nicht entziehen.');
@@ -686,6 +704,10 @@ if ($action==='userSave' && $method==='POST') {
         if ($pw!=='') dbq('UPDATE radpate_users SET password_hash=?, must_change_pw=1, password_version=password_version+1 WHERE id=?',[password_hash(valid_new_password($pw),PASSWORD_DEFAULT),$id]);
         // Rolle oder Zugang geändert: offene Sitzungen beenden, damit die neue Rolle sofort gilt.
         elseif ($old['role']!==$role || (int)$old['active']!==($active?1:0)) dbq('UPDATE radpate_users SET password_version=password_version+1 WHERE id=?',[$id]);
+        if ($routeIds!==null) {
+            dbq('DELETE FROM radpate_user_routes WHERE user_id=?',[$id]);
+            foreach ($routeIds as $rid) dbq('INSERT INTO radpate_user_routes (user_id, route_id) VALUES (?,?)',[$id,$rid]);
+        }
         return $id;
     });
     $row=db_row('SELECT u.*, (SELECT COUNT(*) FROM radpate_entries e WHERE e.user_id=u.id) AS entries FROM radpate_users u WHERE u.id=?',[$saved]);

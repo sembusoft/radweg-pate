@@ -328,6 +328,10 @@ legend { font-size: .9375rem; font-weight: 700; margin-bottom: 8px; padding: 0; 
 .route-pick { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .route-pick-btn { position: relative; min-height: 48px; min-width: 0; padding: 0; border: var(--bw) solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--text); font: inherit; font-size: 1rem; font-weight: 800; cursor: pointer; }
+.route-pick-btn.other:not(.active) { border-style: dashed; color: var(--text-muted); }
+.route-pick-btn.mine:not(.active) { border-color: var(--primary); }
+.route-group-label { margin: 6px 0 2px; font-size: .8125rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.chip.chip-mine { color: var(--primary-text); border-color: var(--primary); }
 .route-pick-btn.active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .route-pick-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .route-pick-badge { position: absolute; top: -7px; right: -5px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;

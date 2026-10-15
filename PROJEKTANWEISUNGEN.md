@@ -74,6 +74,9 @@ Laufzeit; Werkzeuge (Icons) werden nur zum Erzeugen von Dateien benutzt, die dan
   - Benutzer werden nie gelöscht, nur deaktiviert. Rolle/Zugang/Passwort geändert → Sitzungen enden
     (`password_version`).
   - Neue Schreib-Aktion: `entry_lock($id)` prüft den Besitz; Admin-Aktionen mit `require_admin()`.
+  - Touren ↔ Paten (`radpate_user_routes`, ab 3.11.0): Admin ordnet im Benutzer-Dialog zu, eine Tour
+    kann mehrere Paten haben. Wirkung nur in der Oberfläche: eigene Touren vorn und vorausgewählt
+    (Touren-Knöpfe, Karte, „Fahrt beginnen“), andere bleiben erreichbar.
 - **Der Datenordner liegt im Webroot** und ist dreifach gesperrt (`public/.htaccess`,
   eigene `.htaccess` im Ordner — legt der Deploy an —, Deploy-Prüfung von außen).
   Sein Name `radwegpate_private` steht an vier Stellen: `config.php`, `public/.htaccess`,

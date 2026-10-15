@@ -91,20 +91,25 @@ function routeCard(r){
  const mapLinks=hasMap?`<button class="btn outline small" type="button" data-map-choose="${r.id}">${ic('map')} In Karte zeigen</button><a class="btn outline small" target="_blank" rel="noopener" href="${mapDownloadUrl(r.id)}">${ic('download')} GPX für Naviki</a>`:'<p class="map-empty">Noch keine KML-Linie zugeordnet</p>';
  return `<article class="route-card">
   <div class="route-top"><div class="route-icon ${r.type==='runde'?'pink':''}">${ic(r.type==='runde'?'route':'bike')}</div><div class="route-heading"><span class="route-num">TOUR ${esc(r.id)}</span><h3>${esc(r.name)}</h3><p>${esc(r.area)}</p></div>${isAdmin()?`<button type="button" class="icon-button small route-edit" data-route-edit="${r.id}" aria-label="Tour ${esc(r.id)} bearbeiten" title="Tour bearbeiten">${ic('pencil')}</button>`:''}</div>
-  <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span><span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
+  <div class="route-meta"><span class="chip ${r.type==='runde'?'pink':''}">${r.type==='runde'?'Rundtour':'Abfahrt bis Gemeindegrenze'}</span><span class="chip">${r.km?`${Number(r.km).toLocaleString('de-DE')} km (manuell)`:(hasMap?`KML: ca. ${routeLineKm(r.id).toFixed(1).replace('.',',')} km`:'km ungeprüft')}</span>${isMyRoute(r.id)?`<span class="chip chip-mine">${ic('user')} Deine Tour</span>`:''}${(r.paten||[]).length?`<span class="chip">Paten: ${r.paten.map(esc).join(', ')}</span>`:''}<span class="chip">${entries.length} ${entries.length===1?'Prüfung':'Prüfungen'}</span>${tourIssueCount?`<span class="chip">${tourIssueCount} Mängel gesamt</span>`:''}${openCount?`<span class="chip">${openCount} offen</span>`:''}</div>
   <div class="route-actions"><button type="button" class="btn primary small" data-tour-start="${r.id}">${ic('bike')} Tour starten</button><button type="button" class="btn outline small" data-new-entry="${r.id}">${ic('plus')} Fahrt eintragen</button>${mapLinks}</div>
   ${recent?`<p class="route-note">Zuletzt geprüft: ${textDate(recent.date)} · ${esc(STATUSES[recent.status])}</p>`:`<p class="route-note">Noch kein Eintrag · Startpunkt Flurweg 7</p>`}
  </article>`;
 }
 // Touren-Seite: eine Auswahlliste statt sieben gleicher Karten; die gewählte Tour bleibt gemerkt.
+// Paten-Zuordnung: eigene Touren stehen vorn und sind vorausgewählt, die anderen bleiben erreichbar.
+function myRouteIds(){return state.me?.routeIds||[];}
+const isMyRoute=id=>myRouteIds().includes(id);
+function orderedRoutes(){const mine=myRouteIds();return [...state.routes.filter(r=>mine.includes(r.id)),...state.routes.filter(r=>!mine.includes(r.id))];}
 function pickedRoute(){
  const id=state.routePick||storedPref('radwegpate-route','');
- return routeById(id)||state.routes[0];
+ return routeById(id)||orderedRoutes()[0];
 }
 function renderRoutePick(){
  const r=pickedRoute();
- $('#route-pick').innerHTML=state.routes.map(x=>{const open=pendingIssues([x.id]).length,on=r&&x.id===r.id;
-   return `<button type="button" role="tab" class="route-pick-btn${on?' active':''}" data-route-pick="${esc(x.id)}" aria-selected="${on}" aria-label="Tour ${esc(x.id)} · ${esc(x.name)}${open?`, ${open} offene Mängel`:''}" title="${esc(x.name)}">${esc(x.id)}${open?`<span class="route-pick-badge">${open}</span>`:''}</button>`;}).join('');
+ const mineAny=myRouteIds().length>0;
+ $('#route-pick').innerHTML=orderedRoutes().map(x=>{const open=pendingIssues([x.id]).length,on=r&&x.id===r.id,mine=isMyRoute(x.id);
+   return `<button type="button" role="tab" class="route-pick-btn${on?' active':''}${mineAny&&!mine?' other':''}${mine?' mine':''}" data-route-pick="${esc(x.id)}" aria-selected="${on}" aria-label="Tour ${esc(x.id)} · ${esc(x.name)}${open?`, ${open} offene Mängel`:''}" title="${esc(x.name)}">${esc(x.id)}${open?`<span class="route-pick-badge">${open}</span>`:''}</button>`;}).join('');
  $('#route-list').innerHTML=r?routeCard(r):'';
 }
 function render(){
@@ -209,7 +214,11 @@ function openTrip(id){state.trip=id;renderTrip();selectTab('trip');updateTripBan
 function openTripStart(ids=[]){
  const run=runningTrip();
  if(run){openTrip(run.id);toast('Es läuft noch eine Kontrollfahrt – erst beenden, dann eine neue beginnen.',true);return;}
- $('#trip-start-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="tripTours" value="${esc(r.id)}" ${ids.includes(r.id)?'checked':''}><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
+ // Ohne Vorauswahl (Plus, Tagebuch): die eigenen Touren ankreuzen; eigene stehen vorn.
+ const pre=ids.length?ids:myRouteIds(),mine=myRouteIds();
+ const opt=r=>`<label class="entry-route-option"><input type="checkbox" name="tripTours" value="${esc(r.id)}" ${pre.includes(r.id)?'checked':''}><span>${esc(r.id)} · ${esc(r.name)}</span></label>`;
+ const own=state.routes.filter(r=>mine.includes(r.id)),rest=state.routes.filter(r=>!mine.includes(r.id));
+ $('#trip-start-routes').innerHTML=own.length?`<p class="route-group-label">Deine Touren</p>${own.map(opt).join('')}${rest.length?`<p class="route-group-label">Weitere Touren</p>${rest.map(opt).join('')}`:''}`:state.routes.map(opt).join('');
  $('#trip-start-date').value=todayLocal();$('#trip-start-time').value=nowTime();
  $('#trip-start-dialog').showModal();
 }
@@ -431,7 +440,7 @@ async function loadUsers(){
  try{const d=await api('users');state.users=d.users||[];renderUsers();}catch(err){toast(err.message,true);}
 }
 function renderUsers(){
- $('#user-list').innerHTML=state.users.map(u=>`<div class="user-row${u.active?'':' inactive'}"><div class="user-main"><strong>${ic('user')} ${esc(u.name)}${u.id===state.me?.id?' <span class="chip">du</span>':''}</strong><span class="smallnote">${u.role==='admin'?'Admin':'Pate'} · ${u.entries??0} ${u.entries===1?'Fahrt':'Fahrten'}${u.active?'':' · deaktiviert'}${u.mustChangePassword?' · Startpasswort':''}${u.lastLoginAt?' · zuletzt '+new Date(u.lastLoginAt).toLocaleDateString('de-DE'):' · noch nie angemeldet'}</span></div><button type="button" class="icon-button small" data-user-edit="${u.id}" aria-label="${esc(u.name)} bearbeiten" title="Bearbeiten">${ic('pencil')}</button></div>`).join('')||'<p class="smallnote">Noch keine Benutzer.</p>';
+ $('#user-list').innerHTML=state.users.map(u=>`<div class="user-row${u.active?'':' inactive'}"><div class="user-main"><strong>${ic('user')} ${esc(u.name)}${u.id===state.me?.id?' <span class="chip">du</span>':''}</strong><span class="smallnote">${u.role==='admin'?'Admin':'Pate'} · ${u.entries??0} ${u.entries===1?'Fahrt':'Fahrten'}${u.active?'':' · deaktiviert'}${u.mustChangePassword?' · Startpasswort':''}${u.lastLoginAt?' · zuletzt '+new Date(u.lastLoginAt).toLocaleDateString('de-DE'):' · noch nie angemeldet'}</span><span class="smallnote">${u.routeIds?.length?'Touren '+u.routeIds.map(esc).join(', '):'keine Touren zugeordnet'}</span></div><button type="button" class="icon-button small" data-user-edit="${u.id}" aria-label="${esc(u.name)} bearbeiten" title="Bearbeiten">${ic('pencil')}</button></div>`).join('')||'<p class="smallnote">Noch keine Benutzer.</p>';
 }
 function suggestPassword(){
  const chars='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -444,6 +453,7 @@ function openUser(id=0){
  $('#user-name').value=u?.name||'';
  $('#user-role').value=u?.role||'pate';
  $('#user-active').checked=u?u.active:true;
+ $('#user-routes').innerHTML=state.routes.map(r=>`<label class="entry-route-option"><input type="checkbox" name="userRoutes" value="${esc(r.id)}" ${(u?.routeIds||[]).includes(r.id)?'checked':''}><span>${esc(r.id)} · ${esc(r.name)}</span></label>`).join('');
  const self=u&&u.id===state.me?.id;
  $('#user-role').disabled=!!self;$('#user-active').disabled=!!self;
  $('#user-password').value=u?'':suggestPassword();$('#user-password').required=!u;$('#user-password').disabled=!!self;$('#user-pw-suggest').disabled=!!self;
@@ -454,9 +464,9 @@ function openUser(id=0){
 async function saveUser(ev){
  ev.preventDefault();
  const id=Number($('#user-id').value||0),pw=$('#user-password').value.trim();
- const payload={id,name:$('#user-name').value,role:$('#user-role').value,active:$('#user-active').checked};
+ const payload={id,name:$('#user-name').value,role:$('#user-role').value,active:$('#user-active').checked,routeIds:$$('input[name="userRoutes"]:checked').map(c=>c.value)};
  if(pw)payload.password=pw;
- try{const d=await api('userSave','POST',payload);$('#user-dialog').close();await loadUsers();
+ try{const d=await api('userSave','POST',payload);$('#user-dialog').close();await loadUsers();await refresh();
    toast(pw?`${d.user.name} gespeichert – Startpasswort: ${pw}`:`${d.user.name} gespeichert.`);}catch(err){toast(err.message,true);}
 }
 function setupEvents(){
@@ -659,7 +669,7 @@ function ensureSelectedRoute(){
 }
 function renderMap(){
  if(!state.mapData)state.mapData=mapEmpty();
- if(!state.visibleRoutes)state.visibleRoutes=new Set(state.routes.map(r=>r.id));
+ if(!state.visibleRoutes)state.visibleRoutes=new Set(myRouteIds().length?myRouteIds():state.routes.map(r=>r.id));
  ensureSelectedRoute();
  $('#map-route-picker').innerHTML=state.routes.map(r=>{
   const km=routeLineKm(r.id),has=routeLines(r.id).length>0;
