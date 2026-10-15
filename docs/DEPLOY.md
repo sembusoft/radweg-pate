@@ -117,14 +117,17 @@ Ordner trotzdem einmal per FTP sichern.
 
 ## Jedes Deployment
 
-1. Push auf `main`, Workflow **Tests** grün.
-2. Actions → **Deploy (radweg-pate.de)** → Run workflow
+**Automatisch:** Push auf `main` → Workflow **Tests** → ist er grün, startet **Deploy (radweg-pate.de)**
+von selbst und liefert genau den getesteten Commit aus (echter Lauf, ohne Löschen von Dateien).
+Rote Tests → kein Deploy. Pull Requests und von Hand gestartete Tests lösen keinen Deploy aus.
+
+**Von Hand** (z. B. Probelauf oder `delete_removed`): Actions → **Deploy (radweg-pate.de)** → Run workflow
    - `confirm`: `deploy`
-   - zuerst mit **dry_run** – die Zusammenfassung zeigt jede Datei, die übertragen oder gelöscht würde
-   - dann ohne dry_run
-3. Der Lauf prüft danach selbst: Startseite 200, `sw.js` trägt die neue Version,
-   `api.php?action=status` meldet dieselbe Version, `config.php` und `.env` sind von außen gesperrt.
-4. Auf dem Handy: App einmal schließen und neu öffnen (der Service Worker lädt die neue Version).
+   - **dry_run** zeigt jede Datei, die übertragen oder gelöscht würde
+
+Danach prüft der Lauf selbst: Startseite 200, `sw.js` trägt die neue Version,
+`api.php?action=status` meldet dieselbe Version, `config.php` und `.env` sind von außen gesperrt.
+Auf dem Handy: App einmal schließen und neu öffnen (der Service Worker lädt die neue Version).
 
 ## Kurztest nach dem Deploy
 
