@@ -4,6 +4,11 @@ declare(strict_types=1);
  * Test der Routenplaner-Antworten (ohne Netz): openrouteservice- und BRouter-GeoJSON wie von den
  * Diensten dokumentiert, Luftlinie, Anbieterwahl.   php scripts/routing-test.php
  */
+// Eigene, leere .env: die Anbieterwahl darf nicht von der lokalen/CI-.env abhängen.
+$envFile = tempnam(sys_get_temp_dir(), 'rp-env');
+file_put_contents($envFile, "# leer\n");
+putenv('RADWEGPATE_ENV=' . $envFile);
+putenv('ROUTING_PROVIDER'); putenv('ORS_API_KEY');
 require dirname(__DIR__) . '/public/config.php';
 require dirname(__DIR__) . '/public/lib/routing.php';
 $fails = 0;
@@ -31,7 +36,7 @@ $check($d > 1100 && $d < 1125, 'Luftlinie 0,01° Breite ≈ 1,11 km (' . round($
 putenv('ROUTING_PROVIDER=straight');
 $r = route_between([10.0, 48.3], [10.01, 48.3]);
 $check(count($r['line']) === 2 && $r['m'] > 700, 'Anbieter straight (Tests)');
-putenv('ROUTING_PROVIDER='); putenv('ORS_API_KEY=');
+putenv('ROUTING_PROVIDER'); putenv('ORS_API_KEY');
 $check(routing_provider() === 'brouter', 'ohne Schlüssel: BRouter');
 putenv('ORS_API_KEY=abc');
 $check(routing_provider() === 'ors', 'mit ORS_API_KEY: openrouteservice');
