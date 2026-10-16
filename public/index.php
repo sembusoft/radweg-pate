@@ -35,10 +35,10 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
       <div class="auth-card">
         <h1 id="auth-title">Anmelden</h1>
         <p class="muted" id="auth-desc">Deine Dokumentation ist durch ein Passwort geschützt.</p>
-        <form id="auth-form">
+        <form id="auth-form" method="post" action="#">
           <label id="setup-code-wrap" hidden>Einrichtungscode<input id="setup-code" type="text" autocomplete="one-time-code" placeholder="INSTALL_TOKEN aus der .env"></label>
-          <label>Name<input id="auth-name" type="text" autocomplete="username" autocapitalize="words" maxlength="60" required></label>
-          <label>Passwort<input id="auth-password" type="password" minlength="12" autocomplete="current-password" required></label>
+          <label>Name<input id="auth-name" name="username" type="text" autocomplete="username" autocapitalize="words" maxlength="60" required></label>
+          <label>Passwort<input id="auth-password" name="password" type="password" minlength="12" autocomplete="current-password" required></label>
           <button type="submit" class="btn primary full" id="auth-submit">Anmelden</button>
         </form>
         <div id="auth-error" class="message error" role="alert" hidden></div>

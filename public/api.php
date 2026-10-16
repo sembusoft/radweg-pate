@@ -393,8 +393,14 @@ function issue_gpx_token(): string {
     $_SESSION['gpxToken']=$token; $_SESSION['gpxTokenExp']=$exp;
     return $token;
 }
+/** Restlaufzeit des aktuellen Schlüssels in Sekunden (die App rechnet mit eigener Uhr relativ dazu). */
+function gpx_token_ttl(): int { return max(0, (int)($_SESSION['gpxTokenExp']??0) - time()); }
 $gpxTokenUser = ($action==='gpx' && $method==='GET') ? gpx_token_user((string)($_GET['dl']??'')) : null;
 $gpxByToken = $gpxTokenUser!==null;
+// Abgelaufener Schlüssel im Download-Fenster (dort gibt es keine Anmeldung): verständlich melden.
+if (!$gpxByToken && $action==='gpx' && isset($_GET['dl']) && empty($_SESSION['uid'])) {
+    fail('Der GPX-Link ist abgelaufen. Bitte dieses Fenster schließen und in der App erneut auf „GPX“ tippen.',401);
+}
 if (!$gpxByToken) {
     require_login();
     if ($method==='POST') check_csrf();
@@ -418,7 +424,11 @@ if ($action==='bootstrap' && $method==='GET') {
     $u=me();
     result(['ok'=>true,'me'=>['id'=>(int)$u['id'],'name'=>$u['name'],'role'=>$u['role'],'mustChangePassword'=>(bool)(int)$u['must_change_pw'],'routeIds'=>user_route_ids((int)$u['id']),'start'=>user_start((int)$u['id'])],
         'routing'=>routing_provider(),
-        'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token()]);
+        'routes'=>routes_all(),'entries'=>entries_load(),'gpxToken'=>issue_gpx_token(),'gpxTokenTtl'=>gpx_token_ttl()]);
+}
+// Neuer GPX-Schlüssel für eine lange offene App (Schlüssel gilt 12 h, die Anmeldung länger).
+if ($action==='gpxToken' && $method==='GET') {
+    result(['ok'=>true,'gpxToken'=>issue_gpx_token(),'gpxTokenTtl'=>gpx_token_ttl()]);
 }
 if ($action==='route' && $method==='POST') {
     require_admin();

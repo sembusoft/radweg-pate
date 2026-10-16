@@ -48,7 +48,7 @@ function showAuth(force){$('#auth').hidden=false;$('#main').hidden=true;
  if(force)toast('Bitte erneut anmelden.',true);
 }
 function showMain(){ $('#auth').hidden=true;$('#main').hidden=false;render();selectTab(state.tab); }
-async function loadData(){const data=await api('bootstrap');state.me=data.me||null;state.gpxToken=data.gpxToken||'';state.demo=(data.routes||[]).find(r=>r.demo)||null;state.routes=(data.routes||[]).filter(r=>!r.demo);state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
+async function loadData(){const data=await api('bootstrap');state.me=data.me||null;setGpxToken(data);state.demo=(data.routes||[]).find(r=>r.demo)||null;state.routes=(data.routes||[]).filter(r=>!r.demo);state.entries=data.entries;state.entries.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));}
 async function refresh(){await loadData();render();}
 function selectTab(tab){state.tab=tab;if(tab==='settings'&&isAdmin())loadUsers();setTimeout(updateTripBanner);state.mapShown=tab==='map';$$('.tab').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$$('.view').forEach(v=>v.hidden=v.id!==tab+'-view');window.scrollTo({top:0});if(tab==='map'&&state.mapData){renderMap();setTimeout(()=>{state.leafletMap?.invalidateSize();zoomMap();},90);}}
 function entryRoutes(e){return Array.isArray(e.tourIds)&&e.tourIds.length?e.tourIds:[e.tourId];}
@@ -542,7 +542,7 @@ function setupEvents(){
    try{
      const setup=!state.installed;
      const payload={name:$('#auth-name').value,password:$('#auth-password').value};if(setup)payload.code=$('#setup-code').value;
-     await api(setup?'setup':'login','POST',payload);state.installed=true;state.loggedIn=true;$('#auth-password').value='';await loadData();showMain();await loadMap();toast(setup?'Einrichtung abgeschlossen.':`Willkommen zurück, ${state.me?.name||''}.`);requirePasswordChange();
+     await api(setup?'setup':'login','POST',payload);state.installed=true;state.loggedIn=true;await loadData();showMain();setTimeout(()=>{$('#auth-password').value='';},3000);await loadMap();toast(setup?'Einrichtung abgeschlossen.':`Willkommen zurück, ${state.me?.name||''}.`);requirePasswordChange();
    }catch(err){box.textContent=err.message;box.hidden=false;}
  });
  $$('.tab').forEach(t=>t.addEventListener('click',()=>selectTab(t.dataset.tab)));
@@ -583,6 +583,16 @@ function setupEvents(){
   if(event.target.closest('[data-issue-clear]')){delete row.dataset.lat;delete row.dataset.lon;$('[data-issue-pos]',row).textContent='GPS: nicht erfasst';$('[data-issue-clear]',row).hidden=true;}
   if(event.target.closest('[data-issue-gps]')){if(!navigator.geolocation){toast('GPS nicht verfügbar.',true);return;}$('[data-issue-pos]',row).textContent='GPS wird erfasst …';navigator.geolocation.getCurrentPosition(pos=>{row.dataset.lat=String(pos.coords.latitude);row.dataset.lon=String(pos.coords.longitude);$('[data-issue-pos]',row).textContent=`GPS: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;$('[data-issue-clear]',row).hidden=false;},()=>{$('[data-issue-pos]',row).textContent='GPS nicht verfügbar';toast('Standortzugriff fehlgeschlagen.',true);},{enableHighAccuracy:true,timeout:15000,maximumAge:0});}
  });
+ // GPX-Links tragen den Schlüssel vom Zeitpunkt der Anzeige. Beim Tippen den aktuellen einsetzen;
+ // ist er (fast) abgelaufen, erst einen neuen holen und dann öffnen.
+ document.addEventListener('click',e=>{
+   const a=e.target.closest('a[href*="dl="]');if(!a||!state.loggedIn)return;
+   if(gpxTokenFresh()){a.href=withCurrentToken(a.href);return;}
+   e.preventDefault();
+   refreshGpxToken().then(()=>{if(gpxTokenFresh())location.href=withCurrentToken(a.href);else toast('GPX-Link konnte nicht erneuert werden – bitte App neu laden.',true);});
+ },true);
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.loggedIn&&!gpxTokenFresh())refreshGpxToken();});
+ setInterval(()=>{if(state.loggedIn&&!gpxTokenFresh())refreshGpxToken();},10*60e3);
  document.addEventListener('click',e=>{
    const edit=e.target.closest('[data-route-edit]');if(edit)openRoute(edit.dataset.routeEdit);
    const create=e.target.closest('[data-new-entry]');if(create)openTripStart([create.dataset.newEntry]);
@@ -660,6 +670,11 @@ function dlPageBase(){
  if(h==='localhost'||/^[\d.]+$/.test(h)||h.startsWith('[')||h.startsWith('dl.'))return new URL('gpx.php',location.href).href;
  return 'https://dl.'+h.replace(/^www\./,'')+'/gpx.php';
 }
+// Der GPX-Schlüssel gilt 12 h, die Anmeldung länger – eine lange offene App braucht also Nachschub.
+function setGpxToken(d){state.gpxToken=d?.gpxToken||'';state.gpxTokenExp=Date.now()+(Number(d?.gpxTokenTtl)||12*3600)*1000;}
+const gpxTokenFresh=()=>!!state.gpxToken&&state.gpxTokenExp-Date.now()>30*60e3;
+async function refreshGpxToken(){if(!state.loggedIn)return;try{setGpxToken(await api('gpxToken'));}catch{}}
+function withCurrentToken(href){const u=new URL(href,location.href);u.searchParams.set('dl',state.gpxToken);return u.href;}
 function gpxUrl(query){
  if(iosStandalone()&&state.gpxToken)return dlPageBase()+'?'+query+'&dl='+encodeURIComponent(state.gpxToken);
  return 'api.php?action=gpx&'+query;

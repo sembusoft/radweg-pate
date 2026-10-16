@@ -4,8 +4,10 @@ declare(strict_types=1);
 // Wird über https://dl.radweg-pate.de/gpx.php aufgerufen: anderer Host = außerhalb der App.
 // iOS öffnet die Seite deshalb in einem eigenen Browserfenster mit „Fertig“-Knopf;
 // von dort lässt sich die GPX an Naviki übergeben und danach in die App zurückkehren.
-// Die Seite selbst liest keine Daten – der Download läuft über api.php mit dem GPX-Schlüssel.
+// Die Seite prüft nur, ob der Schlüssel noch gilt – der Download selbst läuft über api.php.
 require __DIR__ . '/version.php';
+require __DIR__ . '/config.php';
+require __DIR__ . '/db/db.php';
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -20,6 +22,12 @@ $okToken = preg_match('/^[a-f0-9]{32}$/', $token) === 1;
 $okId = preg_match('/^0[0-7]$/', $id) === 1; // 00 = Demo-Tour
 $okIds = preg_match('/^0[1-7](,0[1-7]){1,6}$/', $ids) === 1;
 $valid = $okToken && ($okId xor $okIds);
+// Schlüssel abgelaufen (gilt 12 h)? Dann gleich hier sagen statt erst beim Download.
+$expired = false;
+if ($valid) {
+    try { $expired = db_val('SELECT 1 FROM radpate_gpx_tokens WHERE token = ? AND expires_at > UTC_TIMESTAMP()', [$token]) === null; }
+    catch (Throwable) { $expired = false; } // DB-Problem: api.php meldet es beim Download
+}
 $withApproach = ($_GET['approach'] ?? '') === '1';  // mit Zufahrt ab dem Startpunkt des Paten
 $query = $valid ? ($okIds ? 'ids=' . rawurlencode($ids) : 'id=' . rawurlencode($id)) . '&dl=' . $token . ($withApproach ? '&approach=1' : '') : '';
 $label = ($okIds ? 'Touren ' . str_replace(',', ' + ', $ids) : 'Tour ' . $id) . ($withApproach ? ' mit Zufahrt' : '');
@@ -38,7 +46,10 @@ $e = fn(string $s) => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 <body class="dl-page">
 <main class="dl-card">
   <p class="eyebrow">Radwegpate</p>
-<?php if ($valid): ?>
+<?php if ($valid && $expired): ?>
+  <h1>Link abgelaufen</h1>
+  <p class="smallnote">Dieses Fenster oben links schließen und in der App erneut auf „GPX“ tippen – die App holt dann einen neuen Link.</p>
+<?php elseif ($valid): ?>
   <h1>GPX für <?= $e($label) ?></h1>
   <a class="btn primary full" href="api.php?action=gpx&amp;<?= $e($query) ?>&amp;save=1"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#download"/></svg> GPX herunterladen</a>
   <a class="btn outline full" href="api.php?action=gpx&amp;<?= $e($query) ?>"><svg class="ic" aria-hidden="true"><use href="assets/icons.svg#external-link"/></svg> GPX direkt öffnen</a>

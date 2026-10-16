@@ -130,6 +130,14 @@ async function main() {
   anon = await fetch(BASE + '/gpx.php?id=99&dl=<x>');
   const badHtml = await anon.text();
   check(badHtml.includes('Link ungültig') && !badHtml.includes('<x>'), 'Download-Seite lehnt ungültige Parameter ab');
+  check(typeof boot.data?.gpxTokenTtl === 'number' && boot.data.gpxTokenTtl > 11 * 3600, 'bootstrap liefert Restlaufzeit des GPX-Schlüssels');
+  const fresh = await a.api('gpxToken');
+  check(fresh.data?.gpxToken === boot.data.gpxToken && fresh.data?.gpxTokenTtl > 0, 'gpxToken: gültiger Schlüssel wird weiterverwendet');
+  const stale = 'f'.repeat(32);
+  anon = await fetch(BASE + '/gpx.php?id=01&dl=' + stale);
+  check((await anon.text()).includes('Link abgelaufen'), 'Download-Seite meldet abgelaufenen Schlüssel');
+  anon = await fetch(BASE + '/api.php?action=gpx&id=01&dl=' + stale);
+  check(anon.status === 401 && ((await anon.json()).error || '').includes('abgelaufen'), 'GPX mit abgelaufenem Schlüssel: verständliche Meldung');
   const viaDl = path => new Promise((ok, no) => { const u = new URL(BASE + path);
     http.get({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, headers: { Host: 'dl.example.test' } }, res => { res.resume(); ok(res.statusCode); }).on('error', no); });
   check(await viaDl('/api.php?action=gpx&id=01&dl=' + boot.data.gpxToken) === 200, 'dl.-Host: GPX mit Schlüssel');
