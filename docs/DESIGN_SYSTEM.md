@@ -1,8 +1,9 @@
 # Radwegpate — Design-System
 
-**Stand:** 14.10.2026 · Version 3.8.0
+**Stand:** 16.10.2026 · Version 3.15.0
 **Gilt für:** `public/assets/style.css`, `public/index.php`, `public/assets/app.js`
-**Vorbild:** FightReg (`DESIGN_SYSTEM.md`, Kapitel 4 und 16) — gleiche Begriffe, kleiner zugeschnitten.
+**Vorgabe:** gemeinsames *App-Designsystem* (Basis FightReg, Theme „Radweg-Pate hell/dunkel“). Token-Namen,
+Schrift, Radien und Gewichte kommen von dort; Abweichungen für den Einsatz unterwegs stehen unten jeweils dabei.
 
 Dieses Dokument beschreibt, was der Code tut. Wo beides auseinanderläuft, ist der Code die Wahrheit
 und dieses Dokument der Fehler — dann wird es nachgezogen.
@@ -26,20 +27,23 @@ damit wächst alles mit der Einstellung *Schriftgröße* und mit der Systemschri
 
 | Klasse am `<html>` | `--fs` | Fließtext |
 |---|---|---|
-| — (Normal) | 1 | 16 px |
-| `.fs-lg` (Groß) | 1.125 | 18 px |
-| `.fs-xl` (Sehr groß) | 1.25 | 20 px |
+| — (Normal) | 1 | 15 px |
+| `.fs-lg` (Groß) | 1.125 | ≈17 px |
+| `.fs-xl` (Sehr groß) | 1.25 | ≈19 px |
 
 | Verwendung | Größe | |
 |---|---|---|
-| Fließtext, Knöpfe, **Eingabefelder** | 1rem (16 px) | Eingaben nie kleiner: iOS zoomt sonst hinein |
-| Kleine Knöpfe, Labels, Listenzeilen | 0.9375rem (15 px) | |
+| **Eingabefelder** | 1rem (16 px) | nie kleiner: iOS zoomt sonst hinein |
+| Fließtext, Knöpfe (600) | 0.9375rem (15 px) | Designsystem 14/13 px – unterwegs eine Stufe größer |
+| Kleine Knöpfe, Listenzeilen | 0.875rem (14 px) | |
+| Labels, Legenden (`label`, `.form-label`, `legend`) | 0.8125rem, 700, GROSS, Sperrung .06em, `--text-label` | Designsystem 10 px – hier die Untergrenze 13 px |
 | Hinweise (`.smallnote`), Chips, Status | 0.875 / 0.8125rem | **0.8125rem (13 px) ist die Untergrenze** |
-| h1 / h2 / h3 | 1.625 / 1.375 / 1.125rem | |
-| Kennzahl im Kopf | 1.25rem, 800 | |
+| h1 (Anmeldung) / h2 Seitentitel / h2 im Dialog / h3 | 1.75 / 1.375 / 1.0625 / 0.9375rem, 700 | page-title 22, modal-title 17, h3 15 px |
+| Kennzahl im Kopf | 1.25rem, 700 | |
 
-Schrift: Systemschrift (`Inter` falls installiert, sonst `-apple-system`/`Segoe UI`/`Roboto`).
-Keine Webfont — spart Ladezeit unterwegs.
+**Schrift: DM Sans** (variabel, nur 400/600/700 verwendet), **selbst gehostet** in `assets/fonts/`
+(Lateinisch + Lateinisch-erweitert, zusammen ≈ 55 KB, im Service-Worker-Cache). Kein Google Fonts –
+Datenschutz. Lizenz: SIL OFL (`assets/fonts/DM-Sans-OFL.txt`).
 
 **Ausnahmen von Regel 1** (fest in px, weil keine Schrift): Rahmen, Radien, Icon-Kästen mit festem
 Maß, Mindesthöhen von Trefferflächen.
@@ -68,15 +72,17 @@ Alle in `style.css`, ein Block je Theme (`:root` = hell).
 | Token | Rolle |
 |---|---|
 | `--bg` | Seitengrund |
-| `--surface` / `--surface-2` / `--surface-3` | Karte / abgesetzte Fläche in der Karte / Hover |
+| `--bg-card` / `--bg-subtle` / `--bg-subtle-2` | Karte / abgesetzte Fläche, Hover / zweite Stufe (nur Radweg-Pate) |
+| `--bg-deep` / `--on-deep` | dunkle Fläche (Toast) / Schrift darauf |
 | `--border` / `--border-strong` | Trennlinie / **Umriss von Bedienelementen** (≥ 3:1) |
-| `--text` / `--text-muted` | Schrift / Nebenschrift (≥ 4,5:1 auf allen Flächen) |
+| `--text` / `--text-muted` / `--text-label` | Schrift / Nebenschrift / Labels und Sekundärknopf (≥ 4,5:1 auf allen Flächen) |
 | `--primary` / `--primary-hover` / `--on-primary` | Hauptfarbe als **Fläche** / Hover / Schrift darauf |
 | `--primary-text` | Hauptfarbe als **Schrift** (Links, Textknöpfe, aktiver Tab) |
 | `--primary-soft` | zarter Hintergrund für Gewähltes (aktiver Tab, gewählte Tour) |
 | `--success-*`, `--warning-*`, `--danger-*`, `--info-*` | je `-bg` (Fläche) und `-text` (Schrift) |
+| `--danger` / `--on-danger` | Gefahr als Vollfläche (`.btn.danger`, Fehler-Toast, Zähler) |
 | `--focus` | Fokusring (3 px) |
-| `--input-bg`, `--overlay`, `--shadow`, `--bw` | Eingabefeld, Dialog-Abdunklung, Schatten, **Rahmenstärke** |
+| `--bg-input`, `--overlay`, `--shadow`, `--bw` | Eingabefeld, Dialog-Abdunklung, Schatten, **Rahmenstärke** |
 
 **Regel: `background: var(--x)` → `color: var(--on-x)` bzw. `var(--x-text)`.** Nie `#fff` daneben
 schreiben — in `hc-dark` ist `--primary` Gelb, und Weiß darauf ist unlesbar.
@@ -123,9 +129,10 @@ Die Farbe ist nie der einzige Hinweis: Tournummer und Name stehen immer daneben.
 
 ## 4. Bedienelemente
 
-**Radien gering** (seit 3.6.0): `--radius` **8 px** für Karten, Kästen, Dialoge; `--radius-sm`
-**6 px** für Knöpfe, Felder, Badges, Status, kleine Kästen. Keine Pillenform, keine festen
-Radiuswerte in Bausteinen. Rund bleiben nur Kreise (Plus-Taste, Kartenpunkte, `50%`).
+**Radien wie App-Designsystem** (seit 3.15.0): `--radius-lg` **16 px** Karten, Dialoge, Karte;
+`--radius` **10 px** Kennzahlen; `--radius-control` **8 px** Knöpfe, Felder, Meldungen, innere Kästen;
+`--radius-sm` **6 px** Chips, Fotos. Status-Badges als Pille (`--radius-lg`). Keine festen Radiuswerte
+in Bausteinen; rund bleiben nur Kreise (Plus-Taste, Kartenpunkte, `50%`). Schatten nur im hellen Theme.
 
 | Baustein | Maß | Regel |
 |---|---|---|

@@ -25,6 +25,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: 
   <link rel="apple-touch-icon" href="assets/icon-180.png">
   <script src="assets/theme-init.js?v=<?= $v ?>"></script>
   <link rel="stylesheet" href="assets/vendor/leaflet-1.9.4/leaflet.css">
+  <link rel="preload" href="assets/fonts/dm-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/style.css?v=<?= $v ?>">
   <title>Radwegpate · Tourentagebuch</title>
 </head>

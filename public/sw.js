@@ -1,5 +1,5 @@
 // Versionsnummer = APP_VERSION aus version.php (CI prüft das, scripts/check.mjs).
-const CACHE_NAME = 'radwegpate-3.14.2';
+const CACHE_NAME = 'radwegpate-3.15.0';
 const VERSION = CACHE_NAME.slice('radwegpate-'.length);
 
 // App-Shell MIT ?v=<Version> – genau so, wie index.php die Dateien einbindet.
@@ -13,6 +13,8 @@ const SHELL = [
   v('./assets/theme-init.js'),
   './assets/icon.svg',
   './assets/icons.svg',
+  './assets/fonts/dm-sans-latin-wght-normal.woff2',
+  './assets/fonts/dm-sans-latin-ext-wght-normal.woff2',
   './assets/icon-192.png',
   './assets/vendor/leaflet-1.9.4/leaflet.css',
   './assets/vendor/leaflet-1.9.4/leaflet.js',

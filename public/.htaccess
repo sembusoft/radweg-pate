@@ -40,4 +40,5 @@ RedirectMatch 404 "(?i)^/(.*/)?lib(/|$)"
 
 <IfModule mod_mime.c>
     AddType application/manifest+json .webmanifest
+    AddType font/woff2 .woff2
 </IfModule>

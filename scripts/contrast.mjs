@@ -29,18 +29,19 @@ const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
 
 // [Vordergrund, Hintergrund, Art]  Art: 'text' | 'ui'
 const PAIRS = [
-  ['text', 'bg', 'text'], ['text', 'surface', 'text'], ['text', 'surface-2', 'text'], ['text', 'input-bg', 'text'],
-  ['text-muted', 'bg', 'text'], ['text-muted', 'surface', 'text'], ['text-muted', 'surface-2', 'text'], ['text-muted', 'primary-soft', 'text'],
-  ['primary-text', 'surface', 'text'], ['primary-text', 'bg', 'text'], ['primary-text', 'surface-2', 'text'], ['primary-text', 'primary-soft', 'text'],
+  ['text', 'bg', 'text'], ['text', 'bg-card', 'text'], ['text', 'bg-subtle', 'text'], ['text', 'bg-input', 'text'],
+  ['text-muted', 'bg', 'text'], ['text-muted', 'bg-card', 'text'], ['text-muted', 'bg-subtle', 'text'], ['text-muted', 'primary-soft', 'text'],
+  ['primary-text', 'bg-card', 'text'], ['primary-text', 'bg', 'text'], ['primary-text', 'bg-subtle', 'text'], ['primary-text', 'primary-soft', 'text'],
   ['on-primary', 'primary', 'text'], ['on-primary', 'primary-hover', 'text'],
   ['success-text', 'success-bg', 'text'], ['warning-text', 'warning-bg', 'text'],
   ['danger-text', 'danger-bg', 'text'], ['info-text', 'info-bg', 'text'],
-  ['bg', 'text', 'text'],          // Toast
-  ['bg', 'danger-text', 'text'],   // Toast Fehler
-  ['danger-text', 'surface', 'text'], // Foto entfernen ×
-  ['border-strong', 'surface', 'ui'], ['border-strong', 'input-bg', 'ui'], ['border-strong', 'surface-2', 'ui'],
-  ['primary', 'surface', 'ui'], ['primary', 'bg', 'ui'],
-  ['focus', 'bg', 'ui'], ['focus', 'surface', 'ui']
+  ['on-deep', 'bg-deep', 'text'],  // Toast
+  ['on-danger', 'danger', 'text'], // Toast Fehler, Zähler, .btn.danger
+  ['text-label', 'bg-card', 'text'], ['text-label', 'bg-subtle', 'text'], // Labels, Sekundärknopf
+  ['danger-text', 'bg-card', 'text'], // Foto entfernen ×
+  ['border-strong', 'bg-card', 'ui'], ['border-strong', 'bg-input', 'ui'], ['border-strong', 'bg-subtle', 'ui'],
+  ['primary', 'bg-card', 'ui'], ['primary', 'bg', 'ui'],
+  ['focus', 'bg', 'ui'], ['focus', 'bg-card', 'ui']
 ];
 
 let fails = 0, checks = 0;
